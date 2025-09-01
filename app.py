@@ -2,12 +2,13 @@
 """
 NYX – Youth Mental Wellness (Hackathon) — Full Upgraded Version
 Features:
-- Buddy Chat, AI Doc Chat
-- Call Session (Demo link)
+- Buddy Chat, AI Doc Chat (OpenRouter GPT)
+- Call Session (placeholder)
 - Mood & Journal with sentiment analysis, streaks, insights
 - Guided micro-actions, Buddy Boost card PNG download
 - Crisis resources, Privacy mode, Clear local data
-- Breathing Game & Mini Game placeholder
+- Doctor Call link & demo Free Therapy Booking
+- Community chat, Mini game (placeholder)
 """
 
 import os, io, time, random, sqlite3
@@ -28,6 +29,35 @@ try:
 except Exception:
     WORDCLOUD_AVAILABLE = False
 
+TTS_LOCAL_AVAILABLE = False
+_tts_engine = None
+try:
+    import pyttsx3
+    TTS_LOCAL_AVAILABLE = True
+    _tts_engine = pyttsx3.init()
+    _tts_engine.setProperty("rate", 185)
+except Exception:
+    TTS_LOCAL_AVAILABLE = False
+    _tts_engine = None
+
+# OpenRouter GPT
+OPENAI_AVAILABLE = False
+openai_client = None
+OPENROUTER_USED = False
+try:
+    from openai import OpenAI
+    from dotenv import load_dotenv
+    load_dotenv()
+    OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY") or st.secrets.get("OPENROUTER_API_KEY", None)
+
+    if OPENROUTER_KEY:
+        openai_client = OpenAI(api_key=OPENROUTER_KEY, base_url="https://openrouter.ai/api/v1")
+        OPENAI_AVAILABLE = True
+        OPENROUTER_USED = True
+except Exception:
+    OPENAI_AVAILABLE = False
+    openai_client = None
+
 # -------------------------
 # App constants & DB
 # -------------------------
@@ -41,9 +71,8 @@ SELF_HARM_KEYWORDS = [
 ]
 
 MOTIVATIONAL_QUOTES = [
-    "Every step counts 🌱", "You matter, today and always 💖", 
-    "Small wins are big victories 🏆", "Storms pass, sunshine follows 🌞", 
-    "Your presence is powerful ✨",
+    "Every step counts 🌱", "You matter, today and always 💖", "Small wins are big victories 🏆",
+    "Storms pass, sunshine follows 🌞", "Your presence is powerful ✨",
 ]
 
 # -------------------------
@@ -121,34 +150,60 @@ def get_streak(today: date, dates: set) -> int:
     return streak
 
 # -------------------------
-# Chat CSS
+# TTS helpers
+# -------------------------
+def tts_local_speak(text: str) -> bool:
+    if not TTS_LOCAL_AVAILABLE or not _tts_engine:
+        return False
+    try:
+        _tts_engine.say(text)
+        _tts_engine.runAndWait()
+        return True
+    except Exception:
+        return False
+
+# -------------------------
+# OpenRouter AI helper
+# -------------------------
+def get_ai_reply(prompt: str, mode="buddy") -> str:
+    if not OPENAI_AVAILABLE or not openai_client:
+        return "AI service not available 🤖"
+    try:
+        resp = openai_client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role":"user","content":prompt}]
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+# -------------------------
+# UI / Chat CSS
 # -------------------------
 CHAT_CSS = """
 <style>
-.chat-wrap{max-height:66vh; overflow-y:auto; padding:8px 10px;
-background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%);
-border-radius:12px; border:1px solid #e6e8ee;}
+.chat-wrap{ max-height:66vh; overflow-y:auto; padding:8px 10px; background:#f8fafc; border-radius:12px; border:1px solid #e6e8ee; }
 .msg{max-width:78%; padding:10px 12px; margin:6px 0; border-radius:14px; line-height:1.4; font-size:15px;}
-.msg.user{margin-left:auto; background:#DCF8C6;}
-.msg.ai{margin-right:auto; background:#F0F1F6;}
-.msg.doc{margin-right:auto; background:#FFE6E6;}
-.typing{font-style:italic; opacity:.75;}
-.bubble-name{font-size:12px; opacity:.6; margin-bottom:2px;}
+.msg.user{ margin-left:auto; background:#DCF8C6;}
+.msg.ai{ margin-right:auto; background:#F0F1F6;}
+.msg.doc{ margin-right:auto; background:#FFE6E6;}
+.typing{ font-style:italic; opacity:.75; }
+.bubble-name{ font-size:12px; opacity:.6; margin-bottom:2px; }
 </style>
 """
 
 def typing_indicator():
     ph = st.empty()
     ph.markdown('<div class="msg ai typing">AI is typing…</div>', unsafe_allow_html=True)
-    time.sleep(0.45)
+    time.sleep(0.5)
     ph.empty()
 
-def render_chat(history: List[Tuple[str, str]], mode: str):
+def render_chat(history: List[Tuple[str,str]], mode: str):
     st.markdown(CHAT_CSS, unsafe_allow_html=True)
     st.markdown('<div class="chat-wrap">', unsafe_allow_html=True)
     for speaker, msg in history:
-        safe_msg = msg.replace("\n", "<br/>")
-        if speaker == "user":
+        safe_msg = msg.replace("\n","<br/>")
+        if speaker=="user":
             st.markdown(f'<div class="msg user"><div class="bubble-name">You</div>{safe_msg}</div>', unsafe_allow_html=True)
         else:
             klass = "doc" if mode=="doc" else "ai"
@@ -157,10 +212,11 @@ def render_chat(history: List[Tuple[str, str]], mode: str):
     st.markdown('</div>', unsafe_allow_html=True)
 
 # -------------------------
-# Mood + Journal
+# Mood + Journal Page
 # -------------------------
 def page_mood_and_journal():
     st.subheader("📈 Mood & Journal")
+
     text = st.text_area("How are you feeling today? (One sentence is enough)", height=120)
     if st.button("Save Check-in"):
         if not text.strip():
@@ -170,7 +226,7 @@ def page_mood_and_journal():
             save_entry(text, score, label)
             st.success(f"Mood saved: {label.capitalize()} ({score:.2f})")
             if detect_crisis(text):
-                st.error("⚠️ Your message contains crisis keywords. Please consider reaching out to a professional.")
+                st.error("⚠️ Crisis detected. Please reach out to a professional immediately!")
 
     st.divider()
     data = fetch_entries()
@@ -185,6 +241,7 @@ def page_mood_and_journal():
         fig.update_traces(marker_size=14)
         st.plotly_chart(fig, use_container_width=True)
 
+        # Show streak
         today = date.today()
         days = set(d["date"] for d in data)
         streak = get_streak(today, days)
@@ -215,11 +272,10 @@ def page_mood_and_journal():
 
     st.divider()
     st.markdown("### 💡 Daily Motivation")
-    quote = random.choice(MOTIVATIONAL_QUOTES)
-    st.success(quote)
+    st.success(random.choice(MOTIVATIONAL_QUOTES))
 
 # -------------------------
-# Buddy Chat Page
+# Buddy / AI Doc Chat Page
 # -------------------------
 def page_chat(mode="buddy"):
     st.subheader("💬 " + ("AI Doc Chat" if mode=="doc" else "Buddy Chat"))
@@ -227,47 +283,15 @@ def page_chat(mode="buddy"):
         st.session_state.history = []
 
     render_chat(st.session_state.history, mode)
+
     user_input = st.text_area("Type your message here…", key="input_msg")
     if st.button("Send"):
         if user_input.strip():
             st.session_state.history.append(("user", user_input))
             typing_indicator()
-            reply = "This is a friendly Buddy response 🤖" if mode=="buddy" else "This is a medical Doc response 🩺"
+            reply = get_ai_reply(user_input, mode)
             st.session_state.history.append(("ai" if mode=="buddy" else "doc", reply))
-            render_chat(st.session_state.history, mode)
-
-# -------------------------
-# Breathing Game
-# -------------------------
-def page_breathing_game():
-    st.subheader("🌬️ Breathing Exercise")
-    if st.button("Start Breathing"):
-        for i in range(4, 0, -1):
-            st.markdown(f"**Inhale… {i}**")
-            time.sleep(1)
-        for i in range(4, 0, -1):
-            st.markdown(f"**Hold… {i}**")
-            time.sleep(1)
-        for i in range(4, 0, -1):
-            st.markdown(f"**Exhale… {i}**")
-            time.sleep(1)
-        st.success("Repeat for 5 rounds for a quick reset 🌿")
-
-# -------------------------
-# Mini Game placeholder
-# -------------------------
-def page_mini_game():
-    st.subheader("🎮 Mini Game")
-    st.info("Mini game coming soon… Stay tuned!")
-
-# -------------------------
-# Doctor Call
-# -------------------------
-def page_doctor_call():
-    st.subheader("📞 Doctor Call / Teleconsult")
-    call_url = "https://example.com/your-doctor-call-link"
-    st.button("Start Call", on_click=lambda: st.experimental_set_query_params(call=call_url))
-    st.markdown(f"[Or click here to join the call]({call_url})")
+            st.experimental_rerun()
 
 # -------------------------
 # Main App
@@ -276,21 +300,15 @@ def main():
     st.set_page_config(APP_TITLE, layout="wide")
     st.title(APP_TITLE)
 
-    page = st.sidebar.radio("Go to", ["Buddy Chat", "AI Doc Chat", "Mood + Journal", "Breathing Game", "Mini Game", "Doctor Call"])
-    if page == "Buddy Chat":
+    page = st.sidebar.radio("Go to", ["Buddy Chat", "AI Doc Chat", "Mood + Journal", "Call Session (Coming soon)", "Mini Game (Coming soon)"])
+    if page=="Buddy Chat":
         page_chat(mode="buddy")
-    elif page == "AI Doc Chat":
+    elif page=="AI Doc Chat":
         page_chat(mode="doc")
-    elif page == "Mood + Journal":
+    elif page=="Mood + Journal":
         page_mood_and_journal()
-    elif page == "Breathing Game":
-        page_breathing_game()
-    elif page == "Mini Game":
-        page_mini_game()
-    elif page == "Doctor Call":
-        page_doctor_call()
     else:
-        st.info("Coming soon…")
+        st.info("Feature coming soon…")
 
-if __name__ == "__main__":
+if __name__=="__main__":
     main()
