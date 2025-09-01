@@ -1,11 +1,21 @@
+# Core
 streamlit>=1.32.0
 numpy>=1.24
 matplotlib>=3.8.0
 plotly>=5.20.0
 wordcloud>=1.9.3
-python-dotenv>=1.0.1
+
+# Sentiment & NLP
 vaderSentiment>=3.3.2
+
+# Optional audio/text (use Streamlit-friendly alternatives)
 SpeechRecognition>=3.10.1
-pyaudio>=0.2.13
-elevenlabs>=0.3.0
+sounddevice>=0.4.7
+soundfile>=0.12.1
 pyttsx3>=2.90
+
+# Optional TTS/voice API
+elevenlabs>=0.3.0
+
+# Environment variables
+python-dotenv>=1.0.1
