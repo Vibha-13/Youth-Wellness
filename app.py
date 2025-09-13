@@ -83,8 +83,6 @@ st.markdown(
 st.sidebar.header("Navigation")
 
 # --- Load API Key and Configure Model ---
-
-
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     try:
@@ -96,7 +94,6 @@ if "GEMINI_API_KEY" in st.secrets:
 else:
     st.sidebar.markdown("Status: **Local Demo Mode** 🟠")
     st.warning("No API key found. The app is running in local demo mode. To enable the AI API, add your key to a Streamlit Cloud Secret.")
-
 
 # --- Session State Management ---
 if 'page' not in st.session_state:
