@@ -39,7 +39,7 @@ st.markdown(
     """
     <style>
     .stApp {
-        background: linear-gradient(to right, #f4f6f9, #e9ebee);
+        background: linear-gradient(to right, #eaf2ff, #d9e6ff);
         color: #212529;
     }
     .main .block-container {
@@ -65,17 +65,38 @@ st.markdown(
         margin-bottom: 20px;
     }
     .quote-box {
-        background-color: #e9f0f6;
+        background-color: #dbeaff;
         border-radius: 15px;
         padding: 20px;
         text-align: center;
-        border: 2px solid #b8c8d8;
+        border: 2px solid #a8c4ff;
     }
     .st-emotion-cache-h5h9p4 {
         color: #ffffff;
         background-color: #1f6feb;
         border-radius: 5px;
         border: none;
+    }
+    .card-pink {
+        background-color: #f7e6f0;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .card-mint {
+        background-color: #e6f7f2;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .card-lavender {
+        background-color: #f0e6f7;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        margin-bottom: 20px;
     }
     </style>
     """,
@@ -121,6 +142,8 @@ if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = None
+if 'user_email' not in st.session_state:
+    st.session_state['user_email'] = None
 
 # --- Core Functions ---
 def get_ai_response(prompt_messages):
@@ -276,6 +299,7 @@ def user_authentication():
                 if user:
                     st.session_state['user_id'] = user[0]['id']
                     st.session_state['logged_in'] = True
+                    st.session_state['user_email'] = email
                     st.sidebar.success("Login successful!")
                     load_journal_entries_from_db()
                     st.rerun()
@@ -284,10 +308,11 @@ def user_authentication():
             else:
                 st.sidebar.warning("Please enter a valid email.")
     else:
-        st.sidebar.write("Logged in as:", st.session_state.user_email if 'user_email' in st.session_state else "User")
+        st.sidebar.write("Logged in as:", st.session_state.user_email)
         if st.sidebar.button("Logout"):
             st.session_state['logged_in'] = False
             st.session_state['user_id'] = None
+            st.session_state['user_email'] = None
             st.session_state['daily_journal'] = []
             st.session_state['messages'] = []
             st.sidebar.info("Logged out.")
@@ -403,7 +428,9 @@ def journal_and_analysis():
 
     st.subheader("My Private Journal")
     with st.container(border=True):
+        st.markdown("<div class='card-mint'>", unsafe_allow_html=True)
         journal_entry = st.text_area("Write down your thoughts:", height=200)
+        st.markdown("</div>", unsafe_allow_html=True)
         if st.button("Save Entry"):
             if journal_entry:
                 sentiment_score = get_sentiment(journal_entry)['compound']
