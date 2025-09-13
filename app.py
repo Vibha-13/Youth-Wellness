@@ -14,6 +14,19 @@ import wavio
 from datetime import datetime
 import google.generativeai as genai
 from dotenv import load_dotenv
+from supabase import create_client, Client
+
+# --- Supabase Initialization ---
+# Get secrets from Streamlit Cloud
+SUPABASE_URL = st.secrets.get("SUPABASE_URL")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
+
+# Create a Supabase client
+if SUPABASE_URL and SUPABASE_KEY:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    st.sidebar.success("Database Connected 🟢")
+else:
+    st.sidebar.warning("Database not connected 🔴")
 
 # --- Custom Styling & Theme ---
 st.set_page_config(
@@ -25,27 +38,44 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    .reportview-container {
-        background: #0d1117;
-        color: #c9d1d9;
+    .stApp {
+        background: linear-gradient(to right, #f8f9fa, #e9ecef);
+        color: #212529;
     }
-    .st-emotion-cache-18ni2cp {
-        background-color: #161b22;
-        border-radius: 10px;
+    .main .block-container {
+        padding: 2rem;
+    }
+    .css-1av55r7 {
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        background-color: #ffffff;
+        padding: 20px;
     }
     .st-emotion-cache-16p649c {
-        border: 2px solid #30363d;
-        border-radius: 10px;
+        border: 2px solid #ced4da;
+        border-radius: 15px;
+        background-color: #f8f9fa;
+        padding: 10px;
+    }
+    .card {
+        background-color: #f8f9fa;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .quote-box {
+        background-color: #e9f0f6;
+        border-radius: 15px;
+        padding: 20px;
+        text-align: center;
+        border: 2px solid #b8c8d8;
     }
     .st-emotion-cache-h5h9p4 {
         color: #ffffff;
         background-color: #1f6feb;
         border-radius: 5px;
         border: none;
-    }
-    .st-emotion-cache-1av55r7 {
-        border-color: #30363d;
-        border-radius: 10px;
     }
     </style>
     """,
@@ -58,8 +88,8 @@ st.sidebar.header("Navigation")
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     try:
         model = genai.GenerativeModel('gemini-pro')
         st.sidebar.markdown("Status: **AI API Connected** 🟢")
@@ -68,7 +98,7 @@ if GEMINI_API_KEY:
         st.error(f"API Configuration Error: {e}")
 else:
     st.sidebar.markdown("Status: **Local Demo Mode** 🟠")
-    st.warning("No API key found. The app is running in local demo mode. To enable the AI API, add your key to a .env file.")
+    st.warning("No API key found. The app is running in local demo mode. To enable the AI API, add your key to a Streamlit Cloud Secret.")
 
 
 # --- Session State Management ---
@@ -88,6 +118,10 @@ if 'mood_history' not in st.session_state:
     st.session_state['mood_history'] = []
 if 'daily_journal' not in st.session_state:
     st.session_state['daily_journal'] = []
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
+if 'user_id' not in st.session_state:
+    st.session_state['user_id'] = None
 
 # --- Core Functions ---
 def get_ai_response(prompt_messages):
@@ -99,7 +133,7 @@ def get_ai_response(prompt_messages):
     last_user_message = prompt_messages[-1]['content']
     sentiment_score = analyzer.polarity_scores(last_user_message)['compound']
 
-    if GEMINI_API_KEY:
+    if "GEMINI_API_KEY" in st.secrets:
         try:
             response = model.generate_content(last_user_message)
             return response.text
@@ -203,22 +237,95 @@ def speak_text(text):
         st.warning(f"Local TTS failed. Error: {e}")
         st.write("Voice output is not available.")
 
+# --- Supabase Database Functions ---
+def get_user_by_email(email):
+    response = supabase.table('users').select('*').eq('email', email).execute()
+    return response.data
+
+def register_user(email):
+    response = supabase.table('users').insert({"email": email}).execute()
+    if response.data:
+        st.session_state['user_id'] = response.data[0]['id']
+        st.session_state['logged_in'] = True
+        st.success("Registration successful! You are now logged in.")
+        st.rerun()
+
+def save_journal_entry_to_db(entry_text, sentiment_score):
+    if st.session_state.logged_in and st.session_state.user_id:
+        data = {
+            "user_id": st.session_state.user_id,
+            "entry_text": entry_text,
+            "sentiment_score": float(sentiment_score)
+        }
+        supabase.table('journal_entries').insert(data).execute()
+
+def load_journal_entries_from_db():
+    if st.session_state.logged_in and st.session_state.user_id:
+        response = supabase.table('journal_entries').select('*').eq('user_id', st.session_state.user_id).order('created_at').execute()
+        st.session_state.daily_journal = [
+            {'date': entry['created_at'], 'text': entry['entry_text'], 'sentiment': entry['sentiment_score']}
+            for entry in response.data
+        ]
+
+def user_authentication():
+    st.sidebar.subheader("User Authentication")
+    if not st.session_state.logged_in:
+        email = st.sidebar.text_input("Enter your email:")
+        if st.sidebar.button("Login / Register"):
+            if email:
+                user = get_user_by_email(email)
+                if user:
+                    st.session_state['user_id'] = user[0]['id']
+                    st.session_state['logged_in'] = True
+                    st.sidebar.success("Login successful!")
+                    load_journal_entries_from_db()
+                    st.rerun()
+                else:
+                    register_user(email)
+            else:
+                st.sidebar.warning("Please enter a valid email.")
+    else:
+        st.sidebar.write("Logged in as:", st.session_state.user_email if 'user_email' in st.session_state else "User")
+        if st.sidebar.button("Logout"):
+            st.session_state['logged_in'] = False
+            st.session_state['user_id'] = None
+            st.session_state['daily_journal'] = []
+            st.session_state['messages'] = []
+            st.sidebar.info("Logged out.")
+            st.rerun()
+
 # --- Main app pages ---
 def homepage():
-    st.title("Welcome to your AI Wellness Companion")
-    st.markdown("Your journey to a healthier mind starts here.")
-    st.image("https://images.unsplash.com/photo-1510525008061-f09c259d6820?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D")
-    st.markdown("This companion is designed to provide a safe, private space to talk about your thoughts and feelings. Use the navigation on the sidebar to explore different features.")
+    st.title("Your Wellness Sanctuary")
+    st.markdown("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
+    st.image("https://images.unsplash.com/photo-1549490349-f06b3e942007?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D")
+
+    st.header("Daily Inspiration")
+    with st.container(border=True):
+        st.markdown("<div class='quote-box'>", unsafe_allow_html=True)
+        st.markdown("<h3>Words of Hope</h3>", unsafe_allow_html=True)
+        st.markdown("<p>Sometimes we need gentle reminders of our strength and worth.</p>", unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <p style='font-style: italic; font-size: 1.2rem; margin-top: 20px;'>
+                "You are braver than you believe, stronger than you seem, and more loved than you know."
+            </p>
+            <p style='text-align: right; margin-top: 10px;'>
+                - A.A. Milne
+            </p>
+            """, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     st.header("How It Works")
-    st.markdown("""
-        1. **AI Doc Chat:** A text-based conversation with a compassionate AI.
-        2. **Call Session:** Use your microphone to talk and get a voice-based response.
-        3. **Journal & Analysis:** Your conversations are logged and analyzed for insights on your emotional well-being.
-    """)
-    
+    with st.container(border=True):
+        st.markdown("""
+            1. **AI Doc Chat:** Have a text-based conversation with a compassionate AI.
+            2. **Call Session:** Use your microphone to talk and get a voice-based response.
+            3. **Journal & Analysis:** Your conversations are logged and analyzed for insights on your emotional well-being.
+        """)
+
     st.divider()
-    
+
     st.header("Daily Mood Tracker")
     with st.container(border=True):
         col1, col2 = st.columns([2, 1])
@@ -295,18 +402,20 @@ def journal_and_analysis():
     st.title("Journal & Analysis")
     st.markdown("Review your conversations and gain insights into your mood over time.")
 
-    # Journaling Feature
     st.subheader("My Private Journal")
     with st.container(border=True):
         journal_entry = st.text_area("Write down your thoughts:", height=200)
         if st.button("Save Entry"):
             if journal_entry:
                 sentiment_score = get_sentiment(journal_entry)['compound']
-                st.session_state.daily_journal.append({
-                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "text": journal_entry,
-                    "sentiment": sentiment_score
-                })
+                if st.session_state.logged_in:
+                    save_journal_entry_to_db(journal_entry, sentiment_score)
+                else:
+                    st.session_state.daily_journal.append({
+                        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "text": journal_entry,
+                        "sentiment": sentiment_score
+                    })
                 st.success("Journal entry saved!")
             else:
                 st.warning("Please write something before saving.")
@@ -360,7 +469,6 @@ def personalized_report():
         st.warning("Please interact with the app first to generate data for the report.")
         return
 
-    # --- Insight Section ---
     st.header("1. Emotional Trends")
     total_entries = len(sentiment_df)
     positive_count = len(sentiment_df[sentiment_df['sentiment_color'] == 'Positive'])
@@ -376,7 +484,6 @@ def personalized_report():
     else:
         st.info("Your sentiment has been quite balanced. Keep monitoring your mood to stay in tune with your feelings.")
 
-    # --- Charts & Visualization ---
     st.header("2. Detailed Analysis")
     col1, col2 = st.columns(2)
     with col1:
@@ -394,7 +501,6 @@ def personalized_report():
         except NameError:
             st.info("Wordcloud library not installed.")
     
-    # --- Download Report ---
     report_text = f"""
     --- Your Personalized Wellness Report ---
     Generated on: {datetime.now().strftime("%B %d, %Y")}
@@ -423,22 +529,105 @@ def personalized_report():
         file_name="wellness_report.txt",
         mime="text/plain",
     )
+    
+def emotional_journey():
+    st.title("Your Emotional Journey")
+    st.markdown("A narrative generated by the AI based on your conversations and journal entries.")
+    
+    all_text_entries = " ".join([entry['text'] for entry in st.session_state.call_history if entry['speaker'] == 'User']) + " " + " ".join([entry['text'] for entry in st.session_state.daily_journal])
+    
+    if not all_text_entries:
+        st.warning("Please interact with the app first to generate data for your emotional journey.")
+        return
+
+    sentiment_df, status = analyze_all_sentiment(st.session_state.call_history, st.session_state.daily_journal)
+    
+    if status == "Analysis complete.":
+        avg_sentiment = sentiment_df['compound'].mean()
+        if avg_sentiment > 0.1:
+            st.image("https://images.unsplash.com/photo-1510525008061-f09c259d6820?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D")
+            st.success("Your journey has been filled with positive energy. ✨")
+        elif avg_sentiment < -0.1:
+            st.image("https://images.unsplash.com/photo-1481026469466-2619c991b103?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D")
+            st.warning("Your journey has been challenging, but you are strong. 💧")
+        else:
+            st.image("https://images.unsplash.com/photo-1508247966967-b52b212f7194?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D")
+            st.info("Your journey has been a mix of ups and downs, full of growth. 🌱")
+
+    st.subheader("The Story So Far...")
+    with st.spinner("The AI is writing your story..."):
+        prompt = f"""
+        Based on the following journal entries and conversations, write a personalized, empathetic, and uplifting short story about the user's emotional journey. Use a narrative style, focusing on their growth and resilience. Do not mention specific names or events.
+
+        User data:
+        "{all_text_entries}"
+
+        Write the story from the perspective of an encouraging observer. The story should be 3-4 paragraphs long.
+        """
+        
+        try:
+            story = model.generate_content(prompt).text
+            st.markdown(story)
+        except Exception:
+            st.error("I'm sorry, I couldn't generate the story right now. Please try again later.")
+
+def crisis_support():
+    st.title("Crisis & Immediate Support")
+    st.markdown("You are not alone. If you're going through a tough time, help is available. These feelings are temporary, and reaching out shows incredible strength.")
+    
+    st.header("Crisis Hotlines")
+    st.info("Reach out to these numbers if you are in immediate crisis or need to speak with someone.")
+    
+    st.markdown("### National Suicide & Crisis Lifeline")
+    st.markdown("#### **Call or text 988**")
+    st.markdown("24/7 free and confidential support.")
+    
+    st.markdown("### SAMHSA National Helpline")
+    st.markdown("#### **1-800-662-4357**")
+    st.markdown("Treatment referral and information service.")
+    
+    st.markdown("### Crisis Text Line")
+    st.markdown("#### **Text HOME to 741741**")
+    st.markdown("24/7 crisis support via text message.")
+    
+    st.divider()
+    
+    st.header("Quick Grounding Exercise")
+    st.info("Try the 5-4-3-2-1 technique to ground yourself in the present moment.")
+    
+    st.markdown("1. **5 Things** you can **see**.")
+    st.markdown("2. **4 Things** you can **touch**.")
+    st.markdown("3. **3 Things** you can **hear**.")
+    st.markdown("4. **2 Things** you can **smell**.")
+    st.markdown("5. **1 Thing** you can **taste**.")
+
 
 # --- Navigation logic ---
-page = st.sidebar.radio("Go to:", ('Home', 'AI Doc Chat', 'Call Session', 'Journal & Analysis', 'Personalized Report'))
+user_authentication()
 
-if page == 'Home':
-    st.session_state['page'] = 'home'
+if st.session_state.logged_in:
+    page = st.sidebar.radio("Go to:", ('Home', 'AI Doc Chat', 'Call Session', 'Journal & Analysis', 'Personalized Report', 'My Emotional Journey', 'Crisis Support'))
+    if page == 'Home':
+        st.session_state['page'] = 'home'
+        homepage()
+    elif page == 'AI Doc Chat':
+        st.session_state['page'] = 'chat'
+        ai_doc_chat()
+    elif page == 'Call Session':
+        st.session_state['page'] = 'call'
+        call_session()
+    elif page == 'Journal & Analysis':
+        st.session_state['page'] = 'journal'
+        journal_and_analysis()
+    elif page == 'Personalized Report':
+        st.session_state['page'] = 'report'
+        personalized_report()
+    elif page == 'My Emotional Journey':
+        st.session_state['page'] = 'journey'
+        emotional_journey()
+    elif page == 'Crisis Support':
+        st.session_state['page'] = 'crisis'
+        crisis_support()
+else:
+    st.sidebar.info("Log in to access all app features.")
     homepage()
-elif page == 'AI Doc Chat':
-    st.session_state['page'] = 'chat'
-    ai_doc_chat()
-elif page == 'Call Session':
-    st.session_state['page'] = 'call'
-    call_session()
-elif page == 'Journal & Analysis':
-    st.session_state['page'] = 'journal'
-    journal_and_analysis()
-elif page == 'Personalized Report':
-    st.session_state['page'] = 'report'
-    personalized_report()
