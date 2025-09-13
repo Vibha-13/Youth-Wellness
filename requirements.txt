@@ -10,4 +10,5 @@ wordcloud
 Pillow
 pyttsx3 
 google-generativeai
-python-dotenv
+python-dotenv 
+supabase
