@@ -12,6 +12,8 @@ from wordcloud import WordCloud
 import sounddevice as sd
 import wavio
 from datetime import datetime
+import google.generativeai as genai
+from dotenv import load_dotenv
 
 # --- Custom Styling & Theme ---
 st.set_page_config(
@@ -52,7 +54,24 @@ st.markdown(
 
 st.sidebar.header("Navigation")
 
-# --- Use st.session_state to manage pages and data ---
+# --- Load API Key and Configure Model ---
+load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    try:
+        model = genai.GenerativeModel('gemini-pro')
+        st.sidebar.markdown("Status: **AI API Connected** 🟢")
+    except Exception as e:
+        st.sidebar.markdown("Status: **AI API Failed** 🔴")
+        st.error(f"API Configuration Error: {e}")
+else:
+    st.sidebar.markdown("Status: **Local Demo Mode** 🟠")
+    st.warning("No API key found. The app is running in local demo mode. To enable the AI API, add your key to a .env file.")
+
+
+# --- Session State Management ---
 if 'page' not in st.session_state:
     st.session_state['page'] = 'home'
 if 'messages' not in st.session_state:
@@ -70,15 +89,25 @@ if 'mood_history' not in st.session_state:
 if 'daily_journal' not in st.session_state:
     st.session_state['daily_journal'] = []
 
-# --- Local Fallback Functions ---
+# --- Core Functions ---
 def get_ai_response(prompt_messages):
-    """Provides a smarter, local-only response based on user input for the demo."""
+    """
+    Attempts to get a response from an AI API,
+    falling back to a local response if the API call fails.
+    """
     analyzer = SentimentIntensityAnalyzer()
-    
-    last_user_message = prompt_messages[-1]['content'].lower() if prompt_messages else ""
+    last_user_message = prompt_messages[-1]['content']
     sentiment_score = analyzer.polarity_scores(last_user_message)['compound']
-    
-    # Check for keywords and sentiment for a more specific reply
+
+    if GEMINI_API_KEY:
+        try:
+            response = model.generate_content(last_user_message)
+            return response.text
+        except Exception as e:
+            st.warning("AI API failed. Using local model for now.")
+
+    # --- Local Fallback Logic (if API fails or is not configured) ---
+    last_user_message = last_user_message.lower()
     if "sad" in last_user_message or "depressed" in last_user_message:
         ai_reply = "I hear the heaviness in your words. It's okay to feel this way. What is one small thing that could bring you a bit of comfort right now?"
     elif "anxious" in last_user_message or "stressed" in last_user_message or "panic" in last_user_message:
@@ -88,7 +117,6 @@ def get_ai_response(prompt_messages):
     elif "alone" in last_user_message or "lonely" in last_user_message:
         ai_reply = "You're not alone. I'm here to listen. Would you like to talk about what's been on your mind?"
     else:
-        # Default responses for general conversation
         responses = [
             "I hear you. What's on your mind?",
             "That sounds challenging. Can you tell me more?",
@@ -97,7 +125,6 @@ def get_ai_response(prompt_messages):
         ]
         ai_reply = random.choice(responses)
         
-    # Suggest real help for very negative sentiments
     if sentiment_score < -0.5:
         ai_reply += " Remember, if you're going through a lot, reaching out to a professional is a great step. You don't have to carry this alone."
         
@@ -113,11 +140,10 @@ def analyze_all_sentiment(history, journal):
     
     all_entries = []
     for entry in history:
-        all_entries.append({'text': entry['text'], 'date': datetime.strptime(entry['date'], "%Y-%m-%d %H:%M:%S")})
+        all_entries.append({'text': entry['text'], 'date': datetime.fromtimestamp(entry['timestamp'])})
     for entry in journal:
         all_entries.append({'text': entry['text'], 'date': datetime.strptime(entry['date'], "%Y-%m-%d %H:%M:%S")})
     
-    # Sort entries by date
     all_entries.sort(key=lambda x: x['date'])
 
     if not all_entries:
@@ -161,7 +187,6 @@ def record_audio(duration=5, fs=44100):
     return audio_file_bytes
 
 def transcribe_audio(audio_bytes):
-    """Provides a slightly more realistic transcription for the demo."""
     dummy_responses = [
         "This is a demo transcription. I'm hearing you clearly. What's on your mind?",
         "This is a demo transcription. It sounds like you have a lot to say. Please continue.",
@@ -170,7 +195,6 @@ def transcribe_audio(audio_bytes):
     return random.choice(dummy_responses)
 
 def speak_text(text):
-    """Uses a local TTS engine to speak text."""
     try:
         engine = pyttsx3.init()
         engine.say(text)
@@ -192,7 +216,6 @@ def homepage():
         2. **Call Session:** Use your microphone to talk and get a voice-based response.
         3. **Journal & Analysis:** Your conversations are logged and analyzed for insights on your emotional well-being.
     """)
-    st.sidebar.markdown("Status: **Demo Mode**")
     
     st.divider()
     
@@ -202,7 +225,7 @@ def homepage():
         with col1:
             mood_value = st.slider("Rate your mood today:", 1, 10, 5)
         with col2:
-            st.markdown("<br>", unsafe_allow_html=True)  # Add space to align button
+            st.markdown("<br>", unsafe_allow_html=True)
             if st.button("Log Mood", key="log_mood_button"):
                 st.session_state.mood_history.append({'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 'mood': mood_value})
                 st.success(f"Mood logged! You rated your mood as {mood_value}/10.")
@@ -294,7 +317,6 @@ def journal_and_analysis():
     sentiment_df, status = analyze_all_sentiment(st.session_state.call_history, st.session_state.daily_journal)
 
     if status == "Analysis complete.":
-        # Use color psychology in the chart
         color_map = {
             'Positive': 'green',
             'Neutral': 'yellow',
