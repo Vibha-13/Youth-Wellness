@@ -13,7 +13,6 @@ import sounddevice as sd
 import wavio
 from datetime import datetime
 import google.generativeai as genai
-from dotenv import load_dotenv
 from supabase import create_client, Client
 
 # --- Supabase Initialization ---
