@@ -38,7 +38,7 @@ st.markdown(
     """
     <style>
     .stApp {
-        background: linear-gradient(to right, #f4f6f9, #e9ebee);
+        background: linear-gradient(to right, #eaf2ff, #d9e6ff);
         color: #212529;
     }
     .main .block-container {
@@ -64,17 +64,38 @@ st.markdown(
         margin-bottom: 20px;
     }
     .quote-box {
-        background-color: #e9f0f6;
+        background-color: #dbeaff;
         border-radius: 15px;
         padding: 20px;
         text-align: center;
-        border: 2px solid #b8c8d8;
+        border: 2px solid #a8c4ff;
     }
     .st-emotion-cache-h5h9p4 {
         color: #ffffff;
         background-color: #1f6feb;
         border-radius: 5px;
         border: none;
+    }
+    .card-pink {
+        background-color: #f7e6f0;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .card-mint {
+        background-color: #e6f7f2;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .card-lavender {
+        background-color: #f0e6f7;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        margin-bottom: 20px;
     }
     </style>
     """,
@@ -241,6 +262,7 @@ def register_user(email):
     if response.data:
         st.session_state['user_id'] = response.data[0]['id']
         st.session_state['logged_in'] = True
+        st.session_state['user_email'] = email
         st.success("Registration successful! You are now logged in.")
         st.rerun()
 
@@ -271,6 +293,7 @@ def user_authentication():
                 if user:
                     st.session_state['user_id'] = user[0]['id']
                     st.session_state['logged_in'] = True
+                    st.session_state['user_email'] = email
                     st.sidebar.success("Login successful!")
                     load_journal_entries_from_db()
                     st.rerun()
@@ -283,10 +306,71 @@ def user_authentication():
         if st.sidebar.button("Logout"):
             st.session_state['logged_in'] = False
             st.session_state['user_id'] = None
+            st.session_state['user_email'] = None
             st.session_state['daily_journal'] = []
             st.session_state['messages'] = []
             st.sidebar.info("Logged out.")
             st.rerun()
+
+def mindful_breathing():
+    st.title("Find Your Calm")
+    st.markdown("Let your breath guide you back to peace and center.")
+
+    # State for the breathing exercise
+    if 'breathing_phase' not in st.session_state:
+        st.session_state.breathing_phase = "Inhale"
+    if 'current_cycle' not in st.session_state:
+        st.session_state.current_cycle = 0
+    if 'is_running' not in st.session_state:
+        st.session_state.is_running = False
+
+    breathing_pattern = {
+        "Inhale": 4,
+        "Hold (top)": 4,
+        "Exhale": 6,
+    }
+    
+    phases = list(breathing_pattern.keys())
+    current_phase_index = phases.index(st.session_state.breathing_phase)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        start_button = st.button("Start", disabled=st.session_state.is_running)
+    with col2:
+        reset_button = st.button("Reset")
+
+    if reset_button:
+        st.session_state.breathing_phase = "Inhale"
+        st.session_state.current_cycle = 0
+        st.session_state.is_running = False
+        st.experimental_rerun()
+
+    if start_button:
+        st.session_state.is_running = True
+        st.experimental_rerun()
+
+    if st.session_state.is_running:
+        for cycle in range(st.session_state.current_cycle, 5): # 5 cycles of breathing
+            for i, phase in enumerate(phases):
+                st.session_state.breathing_phase = phase
+                st.session_state.current_cycle = cycle + 1
+                
+                with st.expander("4-4-6 Breathing Exercise"):
+                    st.markdown(f"**Current Phase: {phase}**")
+                    with st.empty():
+                        for t in range(breathing_pattern[phase], 0, -1):
+                            st.subheader(f"Breathe... {t}")
+                            time.sleep(1)
+                
+            st.write(f"Cycle {st.session_state.current_cycle} of 5 completed.")
+            if st.session_state.current_cycle == 5:
+                st.balloons()
+                st.session_state.is_running = False
+
+    st.subheader("Progress")
+    overall_progress = (st.session_state.current_cycle) / 5
+    st.progress(overall_progress)
+    st.write(f"Overall Progress: {int(overall_progress * 100)}%")
 
 # --- Main app pages ---
 def homepage():
@@ -599,29 +683,29 @@ def crisis_support():
 # --- Navigation logic ---
 user_authentication()
 
-if st.session_state.logged_in:
-    page = st.sidebar.radio("Go to:", ('Home', 'AI Doc Chat', 'Call Session', 'Journal & Analysis', 'Personalized Report', 'My Emotional Journey', 'Crisis Support'))
-    if page == 'Home':
-        st.session_state['page'] = 'home'
-        homepage()
-    elif page == 'AI Doc Chat':
-        st.session_state['page'] = 'chat'
-        ai_doc_chat()
-    elif page == 'Call Session':
-        st.session_state['page'] = 'call'
-        call_session()
-    elif page == 'Journal & Analysis':
-        st.session_state['page'] = 'journal'
-        journal_and_analysis()
-    elif page == 'Personalized Report':
-        st.session_state['page'] = 'report'
-        personalized_report()
-    elif page == 'My Emotional Journey':
-        st.session_state['page'] = 'journey'
-        emotional_journey()
-    elif page == 'Crisis Support':
-        st.session_state['page'] = 'crisis'
-        crisis_support()
-else:
-    st.sidebar.info("Log in to access all app features.")
+page = st.sidebar.radio("Go to:", ('Home', 'AI Doc Chat', 'Call Session', 'Journal & Analysis', 'Personalized Report', 'My Emotional Journey', 'Mindful Breathing', 'Crisis Support'))
+
+if page == 'Home':
+    st.session_state['page'] = 'home'
     homepage()
+elif page == 'AI Doc Chat':
+    st.session_state['page'] = 'chat'
+    ai_doc_chat()
+elif page == 'Call Session':
+    st.session_state['page'] = 'call'
+    call_session()
+elif page == 'Journal & Analysis':
+    st.session_state['page'] = 'journal'
+    journal_and_analysis()
+elif page == 'Personalized Report':
+    st.session_state['page'] = 'report'
+    personalized_report()
+elif page == 'My Emotional Journey':
+    st.session_state['page'] = 'journey'
+    emotional_journey()
+elif page == 'Mindful Breathing':
+    st.session_state['page'] = 'breathing'
+    mindful_breathing()
+elif page == 'Crisis Support':
+    st.session_state['page'] = 'crisis'
+    crisis_support()
