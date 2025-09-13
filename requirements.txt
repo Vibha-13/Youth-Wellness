@@ -1,11 +1,11 @@
-streamlit>=1.25.0
-pandas>=2.0.0
-matplotlib>=3.7.0
-plotly>=5.20.0
-vaderSentiment>=3.3.2
-wordcloud>=1.8.2  # optional, for word cloud
-pyttsx3>=2.90     # optional, for local TTS fallback
-openai>=1.33.0    # for OpenRouter API client
-python-dotenv>=1.0.0  # for .env API key
-numpy>=1.26.0     # optional, if you plan to use it in plots/logic
-speechrecognition>=3.9.0  # optional, for voice input
+streamlit
+python-dotenv
+sounddevice
+wavio
+vaderSentiment
+plotly
+matplotlib
+pandas
+wordcloud
+Pillow
+pyttsx3
