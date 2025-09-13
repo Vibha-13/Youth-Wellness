@@ -67,20 +67,26 @@ if 'call_history' not in st.session_state:
     st.session_state['call_history'] = []
 if 'mood_history' not in st.session_state:
     st.session_state['mood_history'] = []
+if 'daily_journal' not in st.session_state:
+    st.session_state['daily_journal'] = []
 
 # --- Local Fallback Functions ---
 def get_ai_response(prompt_messages):
     """Provides a smarter, local-only response based on user input for the demo."""
+    analyzer = SentimentIntensityAnalyzer()
+    
     last_user_message = prompt_messages[-1]['content'].lower() if prompt_messages else ""
-
+    sentiment_score = analyzer.polarity_scores(last_user_message)['compound']
+    
+    # Check for keywords and sentiment for a more specific reply
     if "sad" in last_user_message or "depressed" in last_user_message:
-        return "I hear the heaviness in your words. It's okay to feel this way. What is one small thing that could bring you a bit of comfort right now?"
+        ai_reply = "I hear the heaviness in your words. It's okay to feel this way. What is one small thing that could bring you a bit of comfort right now?"
     elif "anxious" in last_user_message or "stressed" in last_user_message or "panic" in last_user_message:
-        return "Take a deep breath with me. I'm here. Can you describe what is making you feel this way?"
+        ai_reply = "Take a deep breath with me. I'm here. Can you describe what is making you feel this way?"
     elif "happy" in last_user_message or "good" in last_user_message or "great" in last_user_message:
-        return "That's wonderful to hear! I'm happy for you. What's one thing you're most grateful for from today?"
+        ai_reply = "That's wonderful to hear! I'm happy for you. What's one thing you're most grateful for from today?"
     elif "alone" in last_user_message or "lonely" in last_user_message:
-        return "You're not alone. I'm here to listen. Would you like to talk about what's been on your mind?"
+        ai_reply = "You're not alone. I'm here to listen. Would you like to talk about what's been on your mind?"
     else:
         # Default responses for general conversation
         responses = [
@@ -89,7 +95,13 @@ def get_ai_response(prompt_messages):
             "Thank you for sharing. I'm here to listen.",
             "Your feelings are valid. What happened next?",
         ]
-        return random.choice(responses)
+        ai_reply = random.choice(responses)
+        
+    # Suggest real help for very negative sentiments
+    if sentiment_score < -0.5:
+        ai_reply += " Remember, if you're going through a lot, reaching out to a professional is a great step. You don't have to carry this alone."
+        
+    return ai_reply
 
 def get_sentiment(text):
     analyzer = SentimentIntensityAnalyzer()
@@ -104,10 +116,20 @@ def analyze_call_sentiment(history):
 
     for entry in history:
         sentiment = analyzer.polarity_scores(entry['text'])
+        
+        # Determine color based on sentiment score
+        if sentiment['compound'] >= 0.05:
+            sentiment_color = 'Positive'
+        elif sentiment['compound'] <= -0.05:
+            sentiment_color = 'Negative'
+        else:
+            sentiment_color = 'Neutral'
+
         sentiment_list.append({
             'speaker': entry['speaker'],
             'text': entry['text'],
             'compound': sentiment['compound'],
+            'sentiment_color': sentiment_color,
             'date': time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(entry['timestamp']))
         })
 
@@ -239,14 +261,30 @@ def call_session():
             role = "User" if entry['speaker'] == "User" else "AI"
             with st.chat_message(role.lower()):
                 st.markdown(f"**{role}:** {entry['text']}")
-
+                
 def journal_and_analysis():
     st.title("Journal & Analysis")
     st.markdown("Review your conversations and gain insights into your mood over time.")
 
+    # New Journaling Feature
+    st.subheader("My Private Journal")
+    with st.container(border=True):
+        journal_entry = st.text_area("Write down your thoughts:", height=200)
+        if st.button("Save Entry"):
+            if journal_entry:
+                sentiment_score = get_sentiment(journal_entry)['compound']
+                st.session_state.daily_journal.append({
+                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "text": journal_entry,
+                    "sentiment": sentiment_score
+                })
+                st.success("Journal entry saved!")
+            else:
+                st.warning("Please write something before saving.")
+    
     all_text = " ".join([entry['text'] for entry in st.session_state.call_history if entry['speaker'] == 'User'])
     
-    if st.button("Analyze My Journal"):
+    if st.button("Analyze All Data"):
         st.session_state.analysis_text = all_text
         st.rerun()
 
@@ -254,9 +292,17 @@ def journal_and_analysis():
         st.subheader("Sentiment Analysis")
         sentiment_df = analyze_call_sentiment(st.session_state.call_history)
         if isinstance(sentiment_df, pd.DataFrame) and not sentiment_df.empty:
-            st.dataframe(sentiment_df[['speaker', 'text', 'compound']])
-            fig = px.line(sentiment_df, x='date', y='compound', color='speaker', title='Sentiment Over Time')
+            
+            # Use color psychology in the chart
+            color_map = {
+                'Positive': 'green',
+                'Neutral': 'yellow',
+                'Negative': 'red'
+            }
+            fig = px.line(sentiment_df, x='date', y='compound', color='sentiment_color', title='Sentiment Over Time', 
+                          color_discrete_map=color_map, markers=True)
             st.plotly_chart(fig)
+
             st.subheader("Key Topics & Words")
             try:
                 word_cloud_fig = generate_wordcloud(st.session_state.analysis_text)
@@ -264,26 +310,4 @@ def journal_and_analysis():
             except NameError:
                 st.info("Wordcloud library not installed. Install with `pip install wordcloud`")
         else:
-            st.info("No conversations to analyze yet. Start a chat or a call session!")
-    
-    with st.expander("Show Full Journal History"):
-        for entry in st.session_state.call_history:
-            role = "User" if entry['speaker'] == "User" else "AI"
-            with st.chat_message(role.lower()):
-                st.markdown(f"**{role}:** {entry['text']}")
-
-# --- Navigation logic ---
-page = st.sidebar.radio("Go to:", ('Home', 'AI Doc Chat', 'Call Session', 'Journal & Analysis'))
-
-if page == 'Home':
-    st.session_state['page'] = 'home'
-    homepage()
-elif page == 'AI Doc Chat':
-    st.session_state['page'] = 'chat'
-    ai_doc_chat()
-elif page == 'Call Session':
-    st.session_state['page'] = 'call'
-    call_session()
-elif page == 'Journal & Analysis':
-    st.session_state['page'] = 'journal'
-    journal_and_analysis()
+            st.info("No conversations
