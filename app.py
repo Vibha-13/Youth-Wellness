@@ -11,17 +11,48 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from wordcloud import WordCloud
 import sounddevice as sd
 import wavio
+from datetime import datetime
 
-# --- App configuration and state management ---
+# --- Custom Styling & Theme ---
 st.set_page_config(
     page_title="AI Wellness Companion",
     page_icon="🧠",
     layout="wide",
 )
 
+st.markdown(
+    """
+    <style>
+    .reportview-container {
+        background: #0d1117;
+        color: #c9d1d9;
+    }
+    .st-emotion-cache-18ni2cp {
+        background-color: #161b22;
+        border-radius: 10px;
+    }
+    .st-emotion-cache-16p649c {
+        border: 2px solid #30363d;
+        border-radius: 10px;
+    }
+    .st-emotion-cache-h5h9p4 {
+        color: #ffffff;
+        background-color: #1f6feb;
+        border-radius: 5px;
+        border: none;
+    }
+    .st-emotion-cache-1av55r7 {
+        border-color: #30363d;
+        border-radius: 10px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.sidebar.header("Navigation")
 
-# Use st.session_state to manage pages and data
+# --- Use st.session_state to manage pages and data ---
 if 'page' not in st.session_state:
     st.session_state['page'] = 'home'
 if 'messages' not in st.session_state:
@@ -34,6 +65,8 @@ if 'analysis_text' not in st.session_state:
     st.session_state['analysis_text'] = ""
 if 'call_history' not in st.session_state:
     st.session_state['call_history'] = []
+if 'mood_history' not in st.session_state:
+    st.session_state['mood_history'] = []
 
 # --- Local Fallback Functions ---
 def get_ai_response(prompt_messages):
@@ -127,29 +160,49 @@ def homepage():
 
     st.header("How It Works")
     st.markdown("""
-        1. **AI Doc Chat:** Have a text-based conversation with a compassionate AI.
+        1. **AI Doc Chat:** A text-based conversation with a compassionate AI.
         2. **Call Session:** Use your microphone to talk and get a voice-based response.
         3. **Journal & Analysis:** Your conversations are logged and analyzed for insights on your emotional well-being.
     """)
     st.sidebar.markdown("Status: **Demo Mode**")
+    
+    st.divider()
+    
+    st.header("Daily Mood Tracker")
+    with st.container(border=True):
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            mood_value = st.slider("Rate your mood today:", 1, 10, 5)
+        with col2:
+            st.markdown("<br>", unsafe_allow_html=True)  # Add space to align button
+            if st.button("Log Mood", key="log_mood_button"):
+                st.session_state.mood_history.append({'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 'mood': mood_value})
+                st.success(f"Mood logged! You rated your mood as {mood_value}/10.")
+
+        if st.session_state.mood_history:
+            mood_df = pd.DataFrame(st.session_state.mood_history)
+            st.subheader("Your Mood Over Time")
+            st.line_chart(mood_df.set_index('date'))
 
 def ai_doc_chat():
     st.title("AI Doc Chat")
     
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    with st.container(border=True):
+        st.markdown("**Start a conversation with your AI companion.**")
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
-    if prompt := st.chat_input("What's on your mind?"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        if prompt := st.chat_input("What's on your mind?"):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
 
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                response = get_ai_response(st.session_state.messages)
-                st.markdown(response)
-                st.session_state.messages.append({"role": "assistant", "content": response})
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    response = get_ai_response(st.session_state.messages)
+                    st.markdown(response)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
 
 def call_session():
     st.title("Call Session")
@@ -181,11 +234,11 @@ def call_session():
         st.session_state.transcription_text = ""
         st.rerun()
     
-    st.header("Call History")
-    for entry in st.session_state.call_history:
-        role = "User" if entry['speaker'] == "User" else "AI"
-        with st.chat_message(role.lower()):
-            st.markdown(f"**{role}:** {entry['text']}")
+    with st.expander("Show Call History"):
+        for entry in st.session_state.call_history:
+            role = "User" if entry['speaker'] == "User" else "AI"
+            with st.chat_message(role.lower()):
+                st.markdown(f"**{role}:** {entry['text']}")
 
 def journal_and_analysis():
     st.title("Journal & Analysis")
@@ -213,11 +266,11 @@ def journal_and_analysis():
         else:
             st.info("No conversations to analyze yet. Start a chat or a call session!")
     
-    st.header("Full Journal History")
-    for entry in st.session_state.call_history:
-        role = "User" if entry['speaker'] == "User" else "AI"
-        with st.chat_message(role.lower()):
-            st.markdown(f"**{role}:** {entry['text']}")
+    with st.expander("Show Full Journal History"):
+        for entry in st.session_state.call_history:
+            role = "User" if entry['speaker'] == "User" else "AI"
+            with st.chat_message(role.lower()):
+                st.markdown(f"**{role}:** {entry['text']}")
 
 # --- Navigation logic ---
 page = st.sidebar.radio("Go to:", ('Home', 'AI Doc Chat', 'Call Session', 'Journal & Analysis'))
