@@ -107,17 +107,25 @@ def get_sentiment(text):
     analyzer = SentimentIntensityAnalyzer()
     return analyzer.polarity_scores(text)
 
-def analyze_call_sentiment(history):
+def analyze_all_sentiment(history, journal):
     analyzer = SentimentIntensityAnalyzer()
     sentiment_list = []
     
-    if not history:
-        return "No conversation to analyze yet."
-
+    all_entries = []
     for entry in history:
+        all_entries.append({'text': entry['text'], 'date': datetime.strptime(entry['date'], "%Y-%m-%d %H:%M:%S")})
+    for entry in journal:
+        all_entries.append({'text': entry['text'], 'date': datetime.strptime(entry['date'], "%Y-%m-%d %H:%M:%S")})
+    
+    # Sort entries by date
+    all_entries.sort(key=lambda x: x['date'])
+
+    if not all_entries:
+        return None, "No data to analyze yet."
+
+    for entry in all_entries:
         sentiment = analyzer.polarity_scores(entry['text'])
         
-        # Determine color based on sentiment score
         if sentiment['compound'] >= 0.05:
             sentiment_color = 'Positive'
         elif sentiment['compound'] <= -0.05:
@@ -126,15 +134,13 @@ def analyze_call_sentiment(history):
             sentiment_color = 'Neutral'
 
         sentiment_list.append({
-            'speaker': entry['speaker'],
-            'text': entry['text'],
             'compound': sentiment['compound'],
             'sentiment_color': sentiment_color,
-            'date': time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(entry['timestamp']))
+            'date': entry['date']
         })
 
     df = pd.DataFrame(sentiment_list)
-    return df
+    return df, "Analysis complete."
 
 def generate_wordcloud(text):
     if text:
@@ -266,7 +272,7 @@ def journal_and_analysis():
     st.title("Journal & Analysis")
     st.markdown("Review your conversations and gain insights into your mood over time.")
 
-    # New Journaling Feature
+    # Journaling Feature
     st.subheader("My Private Journal")
     with st.container(border=True):
         journal_entry = st.text_area("Write down your thoughts:", height=200)
@@ -282,56 +288,122 @@ def journal_and_analysis():
             else:
                 st.warning("Please write something before saving.")
     
-    all_text = " ".join([entry['text'] for entry in st.session_state.call_history if entry['speaker'] == 'User'])
-    
-    if st.button("Analyze All Data"):
-        st.session_state.analysis_text = all_text
-        st.rerun()
+    all_text_entries = " ".join([entry['text'] for entry in st.session_state.call_history if entry['speaker'] == 'User']) + " " + " ".join([entry['text'] for entry in st.session_state.daily_journal])
 
-    if st.session_state.analysis_text:
-        st.subheader("Sentiment Analysis")
-        sentiment_df = analyze_call_sentiment(st.session_state.call_history)
-        if isinstance(sentiment_df, pd.DataFrame) and not sentiment_df.empty:
-            
-            # Use color psychology in the chart
-            color_map = {
-                'Positive': 'green',
-                'Neutral': 'yellow',
-                'Negative': 'red'
-            }
-            fig = px.line(sentiment_df, x='date', y='compound', color='sentiment_color', title='Sentiment Over Time', 
-                          color_discrete_map=color_map, markers=True)
-            st.plotly_chart(fig)
+    st.subheader("Sentiment Analysis")
+    sentiment_df, status = analyze_all_sentiment(st.session_state.call_history, st.session_state.daily_journal)
 
-            st.subheader("Key Topics & Words")
-            try:
-                word_cloud_fig = generate_wordcloud(st.session_state.analysis_text)
-                st.pyplot(word_cloud_fig)
-            except NameError:
-                st.info("Wordcloud library not installed. Install with `pip install wordcloud`")
-        else:
-            st.info("No conversations to analyze yet. Start a chat or a call session!")
+    if status == "Analysis complete.":
+        # Use color psychology in the chart
+        color_map = {
+            'Positive': 'green',
+            'Neutral': 'yellow',
+            'Negative': 'red'
+        }
+        fig = px.line(sentiment_df, x='date', y='compound', color='sentiment_color', title='Sentiment Over Time', 
+                      color_discrete_map=color_map, markers=True)
+        st.plotly_chart(fig)
+
+        st.subheader("Key Topics & Words")
+        try:
+            word_cloud_fig = generate_wordcloud(all_text_entries)
+            st.pyplot(word_cloud_fig)
+        except NameError:
+            st.info("Wordcloud library not installed. Install with `pip install wordcloud`")
+    else:
+        st.info(status)
     
-    with st.expander("Show Full Journal History"):
+    with st.expander("Show All History"):
         if st.session_state.daily_journal:
             st.subheader("Journal Entries")
             for entry in st.session_state.daily_journal:
                 st.markdown(f"**Date:** {entry['date']} | **Sentiment:** {entry['sentiment']:.2f}")
                 st.info(entry['text'])
-        else:
-            st.info("No journal entries yet. Start writing!")
-
+        
         if st.session_state.call_history:
             st.subheader("Call History")
             for entry in st.session_state.call_history:
                 role = "User" if entry['speaker'] == "User" else "AI"
                 with st.chat_message(role.lower()):
                     st.markdown(f"**{role}:** {entry['text']}")
-        else:
-            st.info("No call history yet.")
+
+def personalized_report():
+    st.title("Your Personalized Wellness Report")
+    st.markdown("A complete summary of your emotional trends and insights.")
+    
+    all_text_entries = " ".join([entry['text'] for entry in st.session_state.call_history if entry['speaker'] == 'User']) + " " + " ".join([entry['text'] for entry in st.session_state.daily_journal])
+    sentiment_df, status = analyze_all_sentiment(st.session_state.call_history, st.session_state.daily_journal)
+    
+    if status != "Analysis complete.":
+        st.warning("Please interact with the app first to generate data for the report.")
+        return
+
+    # --- Insight Section ---
+    st.header("1. Emotional Trends")
+    total_entries = len(sentiment_df)
+    positive_count = len(sentiment_df[sentiment_df['sentiment_color'] == 'Positive'])
+    negative_count = len(sentiment_df[sentiment_df['sentiment_color'] == 'Negative'])
+    
+    st.markdown(f"This report is based on **{total_entries}** interactions you've had with the app. Let's take a closer look at your emotional trends.")
+    
+    if positive_count > negative_count:
+        st.success("Your mood trends are generally positive! Keep focusing on the good things.")
+    elif negative_count > positive_count:
+        st.warning("It looks like you've been going through some difficult moments. Remember to be kind to yourself.")
+        st.info("The AI companion is here to listen, and it's also a great idea to consider reaching out to a professional.")
+    else:
+        st.info("Your sentiment has been quite balanced. Keep monitoring your mood to stay in tune with your feelings.")
+
+    # --- Charts & Visualization ---
+    st.header("2. Detailed Analysis")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Sentiment Over Time")
+        color_map = {'Positive': 'green', 'Neutral': 'yellow', 'Negative': 'red'}
+        fig = px.line(sentiment_df, x='date', y='compound', color='sentiment_color', markers=True, 
+                      color_discrete_map=color_map, title='Your Emotional Journey')
+        st.plotly_chart(fig)
+    
+    with col2:
+        st.subheader("Key Topics")
+        try:
+            word_cloud_fig = generate_wordcloud(all_text_entries)
+            st.pyplot(word_cloud_fig)
+        except NameError:
+            st.info("Wordcloud library not installed.")
+    
+    # --- Download Report ---
+    report_text = f"""
+    --- Your Personalized Wellness Report ---
+    Generated on: {datetime.now().strftime("%B %d, %Y")}
+
+    Emotional Trends Summary:
+    Based on your conversations and journal entries, your mood trends are {
+        'generally positive' if positive_count > negative_count else
+        'leaning towards negative' if negative_count > positive_count else
+        'quite balanced'
+    }.
+
+    Total Entries Analyzed: {total_entries}
+    - Positive Interactions: {positive_count}
+    - Negative Interactions: {negative_count}
+    - Neutral Interactions: {total_entries - positive_count - negative_count}
+
+    Journal & Chat Content:
+    {all_text_entries}
+
+    --- End of Report ---
+    """
+    
+    st.download_button(
+        label="Download Report as Text File",
+        data=report_text,
+        file_name="wellness_report.txt",
+        mime="text/plain",
+    )
 
 # --- Navigation logic ---
-page = st.sidebar.radio("Go to:", ('Home', 'AI Doc Chat', 'Call Session', 'Journal & Analysis'))
+page = st.sidebar.radio("Go to:", ('Home', 'AI Doc Chat', 'Call Session', 'Journal & Analysis', 'Personalized Report'))
 
 if page == 'Home':
     st.session_state['page'] = 'home'
@@ -345,3 +417,6 @@ elif page == 'Call Session':
 elif page == 'Journal & Analysis':
     st.session_state['page'] = 'journal'
     journal_and_analysis()
+elif page == 'Personalized Report':
+    st.session_state['page'] = 'report'
+    personalized_report()
