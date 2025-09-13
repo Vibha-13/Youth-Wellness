@@ -78,7 +78,7 @@ st.markdown(
         border: none;
     }
     </style>
-    """
+    """,
     unsafe_allow_html=True
 )
 st.sidebar.header("Navigation")
