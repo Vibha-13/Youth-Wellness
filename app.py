@@ -39,7 +39,7 @@ st.markdown(
     """
     <style>
     .stApp {
-        background: linear-gradient(to right, #f8f9fa, #e9ecef);
+        background: linear-gradient(to right, #f4f6f9, #e9ebee);
         color: #212529;
     }
     .main .block-container {
@@ -78,10 +78,9 @@ st.markdown(
         border: none;
     }
     </style>
-    """,
+    """
     unsafe_allow_html=True
 )
-
 st.sidebar.header("Navigation")
 
 # --- Load API Key and Configure Model ---
