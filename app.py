@@ -37,14 +37,26 @@ if 'call_history' not in st.session_state:
 
 # --- Local Fallback Functions ---
 def get_ai_response(prompt_messages):
-    """Provides a simple, local-only response for the demo."""
-    responses = [
-        "I hear you. What's on your mind?",
-        "That sounds challenging. Can you tell me more?",
-        "Thank you for sharing. I'm here to listen.",
-        "Your feelings are valid. What happened next?",
-    ]
-    return random.choice(responses)
+    """Provides a smarter, local-only response based on user input for the demo."""
+    last_user_message = prompt_messages[-1]['content'].lower() if prompt_messages else ""
+
+    if "sad" in last_user_message or "depressed" in last_user_message:
+        return "I hear the heaviness in your words. It's okay to feel this way. What is one small thing that could bring you a bit of comfort right now?"
+    elif "anxious" in last_user_message or "stressed" in last_user_message or "panic" in last_user_message:
+        return "Take a deep breath with me. I'm here. Can you describe what is making you feel this way?"
+    elif "happy" in last_user_message or "good" in last_user_message or "great" in last_user_message:
+        return "That's wonderful to hear! I'm happy for you. What's one thing you're most grateful for from today?"
+    elif "alone" in last_user_message or "lonely" in last_user_message:
+        return "You're not alone. I'm here to listen. Would you like to talk about what's been on your mind?"
+    else:
+        # Default responses for general conversation
+        responses = [
+            "I hear you. What's on your mind?",
+            "That sounds challenging. Can you tell me more?",
+            "Thank you for sharing. I'm here to listen.",
+            "Your feelings are valid. What happened next?",
+        ]
+        return random.choice(responses)
 
 def get_sentiment(text):
     analyzer = SentimentIntensityAnalyzer()
@@ -88,8 +100,13 @@ def record_audio(duration=5, fs=44100):
     return audio_file_bytes
 
 def transcribe_audio(audio_bytes):
-    """Provides a dummy transcription for the demo."""
-    return "This is a dummy transcription for the demo. In a live version, this is powered by the Whisper API."
+    """Provides a slightly more realistic transcription for the demo."""
+    dummy_responses = [
+        "This is a demo transcription. I'm hearing you clearly. What's on your mind?",
+        "This is a demo transcription. It sounds like you have a lot to say. Please continue.",
+        "This is a demo transcription. Thank you for speaking. I'm here to listen.",
+    ]
+    return random.choice(dummy_responses)
 
 def speak_text(text):
     """Uses a local TTS engine to speak text."""
