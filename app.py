@@ -310,4 +310,38 @@ def journal_and_analysis():
             except NameError:
                 st.info("Wordcloud library not installed. Install with `pip install wordcloud`")
         else:
-            st.info("No conversations
+            st.info("No conversations to analyze yet. Start a chat or a call session!")
+    
+    with st.expander("Show Full Journal History"):
+        if st.session_state.daily_journal:
+            st.subheader("Journal Entries")
+            for entry in st.session_state.daily_journal:
+                st.markdown(f"**Date:** {entry['date']} | **Sentiment:** {entry['sentiment']:.2f}")
+                st.info(entry['text'])
+        else:
+            st.info("No journal entries yet. Start writing!")
+
+        if st.session_state.call_history:
+            st.subheader("Call History")
+            for entry in st.session_state.call_history:
+                role = "User" if entry['speaker'] == "User" else "AI"
+                with st.chat_message(role.lower()):
+                    st.markdown(f"**{role}:** {entry['text']}")
+        else:
+            st.info("No call history yet.")
+
+# --- Navigation logic ---
+page = st.sidebar.radio("Go to:", ('Home', 'AI Doc Chat', 'Call Session', 'Journal & Analysis'))
+
+if page == 'Home':
+    st.session_state['page'] = 'home'
+    homepage()
+elif page == 'AI Doc Chat':
+    st.session_state['page'] = 'chat'
+    ai_doc_chat()
+elif page == 'Call Session':
+    st.session_state['page'] = 'call'
+    call_session()
+elif page == 'Journal & Analysis':
+    st.session_state['page'] = 'journal'
+    journal_and_analysis()
