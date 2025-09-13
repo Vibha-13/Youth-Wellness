@@ -84,8 +84,7 @@ st.markdown(
 st.sidebar.header("Navigation")
 
 # --- Load API Key and Configure Model ---
-load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
