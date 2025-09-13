@@ -8,4 +8,6 @@ matplotlib
 pandas
 wordcloud
 Pillow
-pyttsx3
+pyttsx3 
+google-generativeai
+python-dotenv
