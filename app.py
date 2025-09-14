@@ -144,18 +144,23 @@ def get_ai_response(prompt_messages):
     Attempts to get a response from an AI API,
     falling back to a local response if the API call fails.
     """
-    analyzer = SentimentIntensityAnalyzer()
+    analyzer = SentimentIntensityConverter()
     last_user_message = prompt_messages[-1]['content']
     sentiment_score = analyzer.polarity_scores(last_user_message)['compound']
 
-    if "GEMINI_API_KEY" in st.secrets:
+    # Use the AI model if it was successfully initialized
+    if 'model' in globals():
         try:
             response = model.generate_content(last_user_message)
             return response.text
         except Exception as e:
             st.warning("AI API failed. Using local model for now.")
+            # Fallback will run below
+    else:
+        # Fallback will run below
+        pass
 
-    # --- Local Fallback Logic (if API fails or is not configured) ---
+    # --- Local Fallback Logic (if AI fails or is not configured) ---
     last_user_message = last_user_message.lower()
     if "sad" in last_user_message or "depressed" in last_user_message:
         ai_reply = "I hear the heaviness in your words. It's okay to feel this way. What is one small thing that could bring you a bit of comfort right now?"
@@ -173,10 +178,10 @@ def get_ai_response(prompt_messages):
             "Your feelings are valid. What happened next?",
         ]
         ai_reply = random.choice(responses)
-        
+
     if sentiment_score < -0.5:
         ai_reply += " Remember, if you're going through a lot, reaching out to a professional is a great step. You don't have to carry this alone."
-        
+
     return ai_reply
 
 def get_sentiment(text):
