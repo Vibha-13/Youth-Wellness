@@ -599,8 +599,21 @@ def emotional_journey_panel():
         st.info("Interact with the app more to build an emotional journey.")
         return
     st.subheader("AI-generated narrative (empathetic)")
-    prompt = f\"\"\"\nWrite a short, supportive, and strength-focused 3-paragraph narrative about a person's recent emotional journey.\nUse empathetic tone and offer gentle encouragement. Data:\n{clean_text_for_ai(all_text)[:4000]}\n\"\"\"\n    if ai_available:\n        try:\n            story = model.generate_content(prompt).text\n            st.markdown(story)\n            return\n        except Exception:\n            st.warning(\"AI generation failed; showing fallback.\")\n    fallback_story = \"You’ve been carrying a lot — and showing up to this app is a small brave step. Over time, small acts of care add up. Keep logging your moments and celebrate tiny wins.\"\n    st.markdown(fallback_story)
-
+    prompt = f"""
+Write a short, supportive, and strength-focused 3-paragraph narrative about a person's recent emotional journey.
+Use empathetic tone and offer gentle encouragement. Data:
+{all_text[:4000]}
+"""
+    if ai_available:
+        try:
+            story = model.generate_content(prompt).text
+            st.markdown(story)
+            return
+        except Exception:
+            st.warning("AI generation failed; showing fallback.")
+    fallback_story = "You’ve been carrying a lot — and showing up to this app is a small brave step. Over time, small acts of care add up. Keep logging your moments and celebrate tiny wins."
+    st.markdown(fallback_story)
+    
 def personalized_report_panel():
     st.header("Personalized Report")
     all_text = get_all_user_text()
