@@ -38,50 +38,62 @@ st.markdown(
     """
     <style>
     .stApp {
-        background: linear-gradient(to right, #eaf2ff, #d9e6ff);
-        color: #212529;
+        background: linear-gradient(135deg, #f0f2f5 0%, #d9e2ef 100%);
+        color: #2c3e50;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     .main .block-container {
-        padding: 2rem;
+        padding: 2rem 3rem;
     }
-    .css-1av55r7 {
+    .st-emotion-cache-1av55r7 {
         border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
         background-color: #ffffff;
-        padding: 20px;
+        padding: 30px;
+        border: 1px solid #e1e4e8;
     }
     .st-emotion-cache-16p649c {
-        border: 2px solid #ced4da;
+        border: 2px solid #b3cde0;
         border-radius: 15px;
         background-color: #f8f9fa;
-        padding: 10px;
+        padding: 15px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     }
     .card {
-        background-color: #f8f9fa;
+        background-color: #eaf4ff;
         border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        padding: 20px;
-        margin-bottom: 20px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        padding: 25px;
+        margin-bottom: 25px;
+        border-left: 5px solid #4a90e2;
     }
     .quote-box {
         background-color: #dbeaff;
         border-radius: 15px;
-        padding: 20px;
+        padding: 25px;
         text-align: center;
         border: 2px solid #a8c4ff;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     }
     .st-emotion-cache-h5h9p4 {
         color: #ffffff;
-        background-color: #1f6feb;
-        border-radius: 5px;
+        background-color: #4a90e2;
+        border-radius: 8px;
         border: none;
+        padding: 10px 20px;
+        font-size: 16px;
+        transition: background-color 0.3s ease;
+    }
+    .st-emotion-cache-h5h9p4:hover {
+        background-color: #357bd9;
     }
     .card-pink {
-        background-color: #f7e6f0;
+        background-color: #fff0f5;
         border-radius: 15px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         padding: 20px;
         margin-bottom: 20px;
+        border-left: 5px solid #ff69b4;
     }
     .card-mint {
         background-color: #e6f7f2;
@@ -89,6 +101,7 @@ st.markdown(
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         padding: 20px;
         margin-bottom: 20px;
+        border-left: 5px solid #48c9b0;
     }
     .card-lavender {
         background-color: #f0e6f7;
@@ -96,6 +109,7 @@ st.markdown(
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         padding: 20px;
         margin-bottom: 20px;
+        border-left: 5px solid #9b59b6;
     }
     </style>
     """,
