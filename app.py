@@ -621,13 +621,16 @@ Write a short, supportive, and strength-focused 3-paragraph narrative about a pe
 Use empathetic tone and offer gentle encouragement. Data:
 {all_text[:4000]}
 """
+    # Attempt to generate the narrative using the AI model
     if ai_available:
         try:
             story = model.generate_content(prompt).text
             st.markdown(story)
             return
         except Exception:
-            st.warning("AI generation failed; showing fallback.")
+            # If the AI call fails for any reason, display a more descriptive warning and a fallback message
+            st.warning("AI generation failed. This might be a temporary issue with the service. A fallback narrative is being displayed.")
+    
     fallback_story = "You’ve been carrying a lot — and showing up to this app is a small brave step. Over time, small acts of care add up. Keep logging your moments and celebrate tiny wins."
     st.markdown(fallback_story)
 
