@@ -1,3 +1,4 @@
+# app.py
 import streamlit as st
 import os
 import time
@@ -45,89 +46,35 @@ st.set_page_config(page_title="AI Wellness Companion", page_icon="🧠", layout=
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
-    
-    .stApp {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        color: #2c3e50;
-        font-family: 'Poppins', sans-serif;
+    /* Page background */
+    [data-testid="stAppViewContainer"]{
+        background: linear-gradient(180deg,#fff8fb 0%, #f2f7ff 100%);
+        color: #1f2937;
+        font-family: 'Inter', sans-serif;
     }
-    .main .block-container {
-        padding: 2rem 4rem;
+    /* Sidebar */
+    [data-testid="stSidebar"]{
+        background: rgba(255,255,255,0.85);
+        border-radius: 12px;
+        padding: 16px;
     }
-    .st-emotion-cache-1av55r7 {
-        border-radius: 20px;
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
-        background-color: #ffffff;
-        padding: 35px;
-        border: none;
-    }
-    .st-emotion-cache-16p649c {
-        border: none;
-        border-radius: 15px;
-        background-color: #f0f4f8;
-        padding: 20px;
-        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
-    }
+    /* Card */
     .card {
-        background-color: #eaf4ff;
-        border-radius: 15px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-        padding: 25px;
-        margin-bottom: 25px;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-        border-left: 5px solid #4a90e2;
+        background: white;
+        border-radius: 14px;
+        padding: 16px;
+        box-shadow: 0 6px 18px rgba(99,102,241,0.08);
     }
-    .card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-    }
-    .quote-box {
-        background-color: #dbeaff;
-        border-radius: 15px;
-        padding: 30px;
-        text-align: center;
-        border: none;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    }
-    .st-emotion-cache-h5h9p4 {
-        color: #ffffff;
-        background-color: #4a90e2;
-        border-radius: 8px;
-        border: none;
-        padding: 12px 24px;
-        font-size: 16px;
+    /* Buttons */
+    .stButton>button {
+        background: linear-gradient(90deg,#8ec5ff,#e0c3fc);
+        color: #0b1220;
+        border-radius: 999px;
+        padding: 8px 18px;
         font-weight: 600;
-        transition: background-color 0.3s ease, transform 0.2s ease;
     }
-    .st-emotion-cache-h5h9p4:hover {
-        background-color: #357bd9;
-        transform: translateY(-2px);
-    }
-    .card-pink {
-        background-color: #fff0f5;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        padding: 20px;
-        margin-bottom: 20px;
-        border-left: 5px solid #ff69b4;
-    }
-    .card-mint {
-        background-color: #e6f7f2;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        padding: 20px;
-        margin-bottom: 20px;
-        border-left: 5px solid #48c9b0;
-    }
-    .card-lavender {
-        background-color: #f0e6f7;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        padding: 20px;
-        margin-bottom: 20px;
-        border-left: 5px solid #9b59b6;
-    }
+    /* Small helper */
+    .muted { color: #6b7280; font-size:0.95rem; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -135,8 +82,12 @@ st.markdown(
 
 # ---------- SECRETS & EXTERNAL SERVICES ----------
 # Gemini (Google) API
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
-ai_available = False
+GEMINI_API_KEY = None
+if st.secrets and "GEMINI_API_KEY" in st.secrets:
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+elif os.getenv("GEMINI_API_KEY"):
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 if GEMINI_API_KEY and genai:
     try:
         genai.configure(api_key=GEMINI_API_KEY)
@@ -146,29 +97,35 @@ if GEMINI_API_KEY and genai:
         st.sidebar.warning("AI API connection failed. Running in local fallback mode.")
         ai_available = False
 else:
-    st.sidebar.warning("AI API not configured. Running in local fallback mode.")
+    ai_available = False
 
 # Supabase (optional)
-SUPABASE_URL = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
+SUPABASE_URL = None
+SUPABASE_KEY = None
 supabase = None
-db_connected = False
+if st.secrets and "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+elif os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_KEY"):
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
 if SUPABASE_URL and SUPABASE_KEY and create_client:
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         db_connected = True
     except Exception:
         db_connected = False
-st.sidebar.markdown(f"- AI: {'Connected' if ai_available else 'Local fallback'}")
-st.sidebar.markdown(f"- DB: {'Connected' if db_connected else 'Not connected'}")
+else:
+    db_connected = False
 
 # ---------- SESSION STATE ----------
 if "messages" not in st.session_state:
-    st.session_state.messages = [] 
+    st.session_state.messages = []  # chat history (list of {'role','content','ts'})
 if "call_history" not in st.session_state:
     st.session_state.call_history = []
 if "daily_journal" not in st.session_state:
-    st.session_state.daily_journal = []
+    st.session_state.daily_journal = []  # local fallback
 if "mood_history" not in st.session_state:
     st.session_state.mood_history = []
 if "streaks" not in st.session_state:
@@ -208,24 +165,20 @@ def now_ts():
     return time.time()
 
 def safe_generate(prompt: str, max_tokens: int = 300):
+    """Generate text using Gemini if available, otherwise fallback canned reply."""
     if ai_available:
         try:
             resp = model.generate_content(prompt)
             return resp.text
-        except Exception:
+        except Exception as e:
             st.warning("AI generation failed — using fallback.")
+    # fallback: short empathetic rewrite
     canned = [
         "Thanks for sharing. I hear you — would you like to tell me more about what’s been going on?",
         "That’s a lot to carry. I’m here with you. Could you describe one thing that feels heavy right now?",
         "I’m listening. If you want, we can try a 1-minute breathing exercise together."
     ]
     return random.choice(canned)
-
-def get_all_user_text():
-    all_text = " ".join([e["text"] for e in st.session_state.daily_journal])
-    all_text += " " + " ".join([e["content"] for e in st.session_state.messages if e["role"]=="user"])
-    all_text += " " + " ".join([e["text"] for e in st.session_state.call_history if e["speaker"]=="User"])
-    return all_text.strip()
 
 def sentiment_compound(text):
     return analyzer.polarity_scores(text)["compound"]
@@ -252,6 +205,7 @@ def record_audio(duration=5, fs=44100):
     return memfile
 
 def tts_play(text):
+    # Try pyttsx3 (local) TTS. If not available, skip.
     if pyttsx3 is None:
         return
     try:
@@ -259,7 +213,7 @@ def tts_play(text):
         engine.setProperty("rate", 150)
         engine.say(text)
         engine.runAndWait()
-    except Exception:
+    except Exception as e:
         st.warning("Local TTS failed.")
 
 # ---------- DATABASE HELPERS (supabase) ----------
@@ -268,8 +222,9 @@ def register_user_db(email):
         return None
     try:
         res = supabase.table("users").insert({"email": email}).execute()
-        return res.data[0]["id"]
-    except Exception:
+        if res.data:
+            return res.data[0]["id"]
+    except Exception as e:
         st.warning("Supabase register failed.")
     return None
 
@@ -318,13 +273,13 @@ def sidebar_auth():
                     st.session_state.user_id = user[0]["id"]
                     st.session_state.user_email = email
                     st.session_state.logged_in = True
+                    # load journals
                     entries = load_journal_db(st.session_state.user_id)
                     st.session_state.daily_journal = [
                         {"date": e["created_at"], "text": e["entry_text"], "sentiment": e["sentiment_score"]}
                         for e in entries
                     ]
                     st.sidebar.success("Logged in.")
-                    st.rerun()
                 else:
                     uid = None
                     if db_connected:
@@ -334,64 +289,88 @@ def sidebar_auth():
                         st.session_state.user_email = email
                         st.session_state.logged_in = True
                         st.sidebar.success("Registered & logged in.")
-                        st.rerun()
                     else:
+                        # fallback local login
                         st.session_state.logged_in = True
                         st.session_state.user_email = email
                         st.sidebar.info("Logged in locally (no DB).")
-                        st.rerun()
             else:
                 st.sidebar.warning("Enter an email")
     else:
-        st.sidebar.write("Logged in as:", st.session_state.user_email)
+        st.sidebar.write("Logged in as:")
+        st.sidebar.markdown(f"**{st.session_state.user_email}**")
         if st.sidebar.button("Logout"):
             st.session_state.logged_in = False
             st.session_state.user_id = None
             st.session_state.user_email = None
-            st.session_state.daily_journal = []
             st.sidebar.info("Logged out.")
-            st.rerun()
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**Status**")
+    st.sidebar.markdown(f"- AI: {'Connected' if ai_available else 'Local fallback'}")
+    st.sidebar.markdown(f"- DB: {'Connected' if db_connected else 'Not connected'}")
+
+def header_home():
+    st.title("Tools for Your Wellbeing")
+    st.markdown("Discover resources, tools and micro-practices to support your mental health journey.")
+    st.markdown("---")
 
 def homepage_panel():
-    st.title("Your Wellness Sanctuary")
-    st.markdown("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
-
-    col1, col2 = st.columns([2, 1])
+    header_home()
+    col1, col2 = st.columns([2,1])
     with col1:
-        st.header("Daily Inspiration")
-        with st.container(border=True):
-            st.markdown("<div class='quote-box'>", unsafe_allow_html=True)
-            st.markdown("<h3>Words of Hope</h3>", unsafe_allow_html=True)
-            st.markdown(
-                f"""
-                <p style='font-style: italic; font-size: 1.2rem; margin-top: 20px;'>
-                    "{random.choice(QUOTES)}"
-                </p>
-                """, unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("### Daily Inspiration")
+        st.markdown(f"**{random.choice(QUOTES)}**")
+        st.markdown("**Quick actions**")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            if st.button("Start Breathing"):
+                st.session_state.page = "breathing"
+                st.experimental_rerun()
+        with c2:
+            if st.button("Talk to AI"):
+                st.session_state.page = "chat"
+                st.experimental_rerun()
+        with c3:
+            if st.button("Journal"):
+                st.session_state.page = "journaling"
+                st.experimental_rerun()
+
+        st.markdown("### Mood Snapshot")
+        if st.session_state.mood_history:
+            last = st.session_state.mood_history[-1]
+            st.markdown(f"**Last mood:** {MOOD_EMOJI_MAP.get(last['mood'], '')}  ·  {last['mood']}/10  ·  {last['date']}")
+        else:
+            st.info("Log your mood — it's quick and helps the AI personalize suggestions.")
 
     with col2:
-        st.image("https://images.unsplash.com/photo-1549490349-f06b3e942007?q=80&w=2070&auto=format&fit=crop", caption="Take a moment for yourself")
+        st.image("https://images.unsplash.com/photo-1505751172876-fa1923c5c528?q=80&w=1400&auto=format&fit=crop")
 
-    st.header("How It Works")
-    with st.container(border=True):
-        st.markdown("""
-            1. **AI Doc Chat:** Have a text-based conversation with a compassionate AI.
-            2. **Call Session:** Use your microphone to talk and get a voice-based response.
-            3. **Journal & Analysis:** Your conversations are logged and analyzed for insights on your emotional well-being.
-        """)
-        
+    st.markdown("---")
+    st.markdown("### Features")
+    f1, f2, f3 = st.columns(3)
+    with f1:
+        st.markdown("#### Mood Tracker")
+        st.markdown("Log quick mood ratings and unlock badges.")
+    with f2:
+        st.markdown("#### AI Doc Chat")
+        st.markdown("A compassionate AI to listen and suggest small exercises.")
+    with f3:
+        st.markdown("#### Journal & Insights")
+        st.markdown("Track progress over time with charts and word clouds.")
+
 def mood_tracker_panel():
     st.header("Daily Mood Tracker")
     col1, col2 = st.columns([3,1])
     with col1:
         mood = st.slider("How do you feel right now?", 1, 10, 6)
-        st.markdown(f"**You chose:** {MOOD_EMOJI_MAP[mood]} · {mood}/10")
+        st.markdown(f"**You chose:** {MOOD_EMOJI_MAP[mood]}  ·  {mood}/10")
         note = st.text_input("Optional: Add a short note about why you feel this way")
         if st.button("Log Mood"):
             entry = {"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "mood": mood, "note": note}
             st.session_state.mood_history.append(entry)
 
+            # update streaks (simple daily streak)
             last_date = st.session_state.streaks.get("last_mood_date")
             today = datetime.now().date()
             if last_date:
@@ -401,7 +380,9 @@ def mood_tracker_panel():
                     last_dt = None
             else:
                 last_dt = None
+
             if last_dt == today:
+                # already logged today -> don't change
                 pass
             else:
                 if last_dt == (today - pd.Timedelta(days=1).date()):
@@ -410,51 +391,52 @@ def mood_tracker_panel():
                     st.session_state.streaks["mood_log"] = 1
                 st.session_state.streaks["last_mood_date"] = today.strftime("%Y-%m-%d")
             st.success("Mood logged. Tiny step, big impact.")
-
+            # unlock badges
             for name, rule in BADGE_RULES:
                 if rule({"mood_history": st.session_state.mood_history, "streaks": st.session_state.streaks}):
                     if name not in st.session_state.streaks["badges"]:
                         st.session_state.streaks["badges"].append(name)
-            st.rerun()
+            st.experimental_rerun()
 
     with col2:
-        st.subheader("Badges")
+        st.markdown("### Badges")
         for b in st.session_state.streaks["badges"]:
             st.markdown(f"- 🏅 {b}")
-        st.subheader("Streak")
+        st.markdown("### Streak")
         st.markdown(f"Consecutive days logging mood: **{st.session_state.streaks.get('mood_log',0)}**")
 
+    # timeline
     if st.session_state.mood_history:
         df = pd.DataFrame(st.session_state.mood_history)
         df['date'] = pd.to_datetime(df['date'])
-        fig = px.line(df, x='date', y='mood', title="Mood Over Time", markers=True)
+        df_plot = df.copy()
+        fig = px.line(df_plot, x='date', y='mood', title="Mood Over Time", markers=True)
         st.plotly_chart(fig, use_container_width=True)
 
 def ai_doc_chat_panel():
     st.header("AI Doc Chat")
-    st.markdown("A compassionate AI buddy to listen.")
-    
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    if prompt := st.chat_input("What's on your mind?"):
-        st.session_state.messages.append({"role": "user", "content": prompt, "ts": now_ts()})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                prompt_context = "\n\n".join([m["content"] for m in st.session_state.messages[-6:]])
-                ai_resp = safe_generate(prompt_context)
-                st.markdown(ai_resp)
-                st.session_state.messages.append({"role": "assistant", "content": ai_resp, "ts": now_ts()})
-        st.rerun()
+    st.markdown("A compassionate AI buddy to listen. Your conversations remain private in this app (unless you opt-in to save).")
+    # render conversation
+    for msg in st.session_state.messages:
+        role = msg.get("role","user")
+        ts = msg.get("ts","")
+        if role == "user":
+            st.markdown(f"**You:** {msg['content']}")
+        else:
+            st.markdown(f"**AI:** {msg['content']}")
+    user_input = st.text_input("What's on your mind?", key="chat_input")
+    if st.button("Send", key="send_chat"):
+        if user_input.strip():
+            st.session_state.messages.append({"role":"user","content":user_input,"ts":now_ts()})
+            # AI response (context aware)
+            prompt_context = "\n\n".join([m["content"] for m in st.session_state.messages[-6:]])
+            ai_resp = safe_generate(prompt_context)
+            st.session_state.messages.append({"role":"assistant","content":ai_resp,"ts":now_ts()})
+            st.experimental_rerun()
 
 def call_session_panel():
     st.header("Call Session (Record & Reply)")
     st.markdown("Record a short message — the app will transcribe (demo) and reply.")
-    
     col1, col2 = st.columns(2)
     with col1:
         duration = st.slider("Recording duration (seconds)", 3, 20, 8)
@@ -463,37 +445,37 @@ def call_session_panel():
         if st.button("Start Recording"):
             audio = record_audio(duration=duration)
             if audio:
+                # transcription placeholder
                 trans = " ".join([
                     "This is a short transcription placeholder.",
                     "You can replace this with a real STT when available."
                 ])
                 st.session_state.transcription_text = trans
                 st.session_state.call_history.append({"speaker":"User","text":trans,"timestamp":now_ts()})
-                st.rerun()
+                st.experimental_rerun()
 
     if st.session_state.transcription_text:
-        st.subheader("You said:")
+        st.markdown("**You said:**")
         st.info(st.session_state.transcription_text)
         if st.button("Get AI Reply"):
             st.session_state.messages.append({"role":"user","content":st.session_state.transcription_text,"ts":now_ts()})
             ai_resp = safe_generate(st.session_state.transcription_text)
             st.session_state.call_history.append({"speaker":"AI","text":ai_resp,"timestamp":now_ts()})
-            st.subheader("AI Reply:")
-            st.markdown(ai_resp)
+            st.markdown(f"**AI:** {ai_resp}")
+            # TTS
             try:
                 tts_play(ai_resp)
             except Exception:
                 pass
             st.session_state.transcription_text = ""
-            st.rerun()
 
     if st.session_state.call_history:
         st.markdown("---")
         st.subheader("Call History")
         for e in st.session_state.call_history[-10:]:
-            who = "user" if e['speaker'] == "User" else "assistant"
-            with st.chat_message(who):
-                st.markdown(e['text'])
+            who = e['speaker']
+            txt = e['text']
+            st.markdown(f"**{who}:** {txt}")
 
 def mindful_breathing_panel():
     st.header("Mindful Breathing — 4-4-6 (Short)")
@@ -503,18 +485,14 @@ def mindful_breathing_panel():
         st.session_state.breath_phase = ""
         st.session_state.breath_cycle = 0
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Start Exercise"):
-            st.session_state.breath_running = True
-            st.session_state.breath_cycle = 0
-            st.rerun()
-    with col2:
-        if st.button("Reset"):
-            st.session_state.breath_running = False
-            st.session_state.breath_phase = ""
-            st.session_state.breath_cycle = 0
-            st.rerun()
+    if st.button("Start Exercise"):
+        st.session_state.breath_running = True
+        st.session_state.breath_cycle = 0
+
+    if st.button("Reset"):
+        st.session_state.breath_running = False
+        st.session_state.breath_phase = ""
+        st.session_state.breath_cycle = 0
 
     if st.session_state.breath_running:
         cycles = 3
@@ -529,7 +507,7 @@ def mindful_breathing_panel():
                     time.sleep(1)
                 placeholder.empty()
             st.session_state.breath_cycle = c+1
-            st.rerun()
+            st.experimental_rerun()
         st.session_state.breath_running = False
         st.balloons()
         st.success("Nice job — that was mindful breathing!")
@@ -551,16 +529,17 @@ def mindful_journaling_panel():
             else:
                 st.session_state.daily_journal.append({"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "text": journal_text, "sentiment": sent})
                 st.success("Saved locally.")
-            st.rerun()
+            st.experimental_rerun()
         else:
             st.warning("Write something you want to save.")
 
 def journal_analysis_panel():
     st.header("Journal & Analysis")
-    all_text = get_all_user_text()
+    all_text = " ".join([e["text"] for e in st.session_state.daily_journal]) + " " + " ".join([e["text"] for e in st.session_state.call_history if e["speaker"]=="User"])
     if not all_text.strip():
         st.info("No journal or call text yet — start journaling or talking to get insights.")
         return
+    # sentiment timeline
     entries = []
     for e in st.session_state.daily_journal:
         entries.append({"date": pd.to_datetime(e["date"]), "compound": e["sentiment"]})
@@ -572,6 +551,7 @@ def journal_analysis_panel():
         df["sentiment_label"] = df["compound"].apply(lambda x: "Positive" if x>=0.05 else ("Negative" if x<=-0.05 else "Neutral"))
         fig = px.line(df, x="date", y="compound", color="sentiment_label", markers=True, title="Sentiment Over Time", color_discrete_map={"Positive":"green","Neutral":"gray","Negative":"red"})
         st.plotly_chart(fig, use_container_width=True)
+    # wordcloud
     wc_fig = generate_wordcloud_figure(all_text)
     if wc_fig:
         st.subheader("Word Cloud")
@@ -591,15 +571,16 @@ def mini_quiz_panel():
         answers.append(ans)
     if st.button("Get Suggestion"):
         suggestion = safe_generate("User choices: " + ", ".join(answers))
-        st.subheader("Suggestion:")
+        st.markdown("**Suggestion:**")
         st.info(suggestion)
+        # small reward
         if "Mood Booster" not in st.session_state.streaks["badges"]:
             st.session_state.streaks["badges"].append("Mood Booster")
-        st.rerun()
+        st.experimental_rerun()
 
 def emotional_journey_panel():
-    st.header("My Emotional Journey")
-    all_text = get_all_user_text()
+    st.header("Your Emotional Journey")
+    all_text = " ".join([e["text"] for e in st.session_state.daily_journal]) + " " + " ".join([e["text"] for e in st.session_state.call_history if e["speaker"]=="User"])
     if not all_text.strip():
         st.info("Interact with the app more to build an emotional journey.")
         return
@@ -616,15 +597,17 @@ def emotional_journey_panel():
             return
         except Exception:
             st.warning("AI generation failed; showing fallback.")
+    # fallback story
     fallback_story = "You’ve been carrying a lot — and showing up to this app is a small brave step. Over time, small acts of care add up. Keep logging your moments and celebrate tiny wins."
     st.markdown(fallback_story)
 
 def personalized_report_panel():
     st.header("Personalized Report")
-    all_text = get_all_user_text()
+    all_text = " ".join([e["text"] for e in st.session_state.daily_journal]) + " " + " ".join([e["text"] for e in st.session_state.call_history if e["speaker"]=="User"])
     if not all_text.strip():
         st.info("No data yet. Start journaling or chatting to generate a report.")
         return
+    # compute summary
     entries = []
     for e in st.session_state.daily_journal:
         entries.append(e)
@@ -635,15 +618,16 @@ def personalized_report_panel():
     pos = len(df[df["sentiment"]>=0.05])
     neg = len(df[df["sentiment"]<=-0.05])
     neut = len(df) - pos - neg
-    st.subheader("Analysis Summary")
     st.markdown(f"**Entries analyzed:** {len(df)}")
     st.markdown(f"- Positive: {pos}")
     st.markdown(f"- Neutral: {neut}")
     st.markdown(f"- Negative: {neg}")
+    # AI insight
     insight_prompt = f"Summarize the main emotional themes in these notes and give 3 gentle suggestions: {all_text[:4000]}"
     insight = safe_generate(insight_prompt)
     st.subheader("AI Insight")
     st.write(insight)
+    # download
     report_text = f"Summary generated on {datetime.now().strftime('%Y-%m-%d')}\nEntries: {len(df)}\nPositive:{pos}\nNeutral:{neut}\nNegative:{neg}\n\nAI Insight:\n{insight}\n\nRaw text:\n{all_text}"
     st.download_button("Download Report", data=report_text, file_name="wellness_report.txt", mime="text/plain")
 
@@ -660,7 +644,7 @@ def crisis_support_panel():
 def main():
     st.sidebar.title("Navigation")
     sidebar_auth()
-    
+
     pages = {
         "Home": homepage_panel,
         "Mood Tracker": mood_tracker_panel,
@@ -674,12 +658,12 @@ def main():
         "Personalized Report": personalized_report_panel,
         "Crisis Support": crisis_support_panel
     }
-    
     page = st.sidebar.radio("Go to:", list(pages.keys()), index=0)
+    # run page
     func = pages.get(page)
     if func:
         func()
-    
+    # small footer
     st.markdown("---")
     st.markdown("Built with care • Data stored locally unless you log in and save to your account.")
 
