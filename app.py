@@ -148,13 +148,13 @@ def get_ai_response(prompt_messages):
     last_user_message = prompt_messages[-1]['content']
     sentiment_score = analyzer.polarity_scores(last_user_message)['compound']
 
-    # Use the AI model if it was successfully initialized
     if 'model' in globals():
         try:
             response = model.generate_content(last_user_message)
             return response.text
         except Exception as e:
             st.warning("AI API failed. Using local model for now.")
+            st.error(f"Full API Error: {e}")  # THIS IS THE NEW LINE
             # Fallback will run below
     else:
         # Fallback will run below
