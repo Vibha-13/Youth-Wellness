@@ -1,7 +1,13 @@
-# app.py
 """
-Upgraded AI Wellness Companion
-- Fixed streaks, safe DB guards, browser TTS, PDF export fallback, cleaned text for AI
+AI Wellness Companion
+A full-featured Streamlit app for mental wellness, including:
+- Mood Tracker
+- AI Chat
+- Journaling & Analysis
+- Mindful Breathing
+- User Authentication
+- Data persistence with Supabase (optional)
+- AI integration with Google Gemini (optional)
 """
 
 import streamlit as st
@@ -71,18 +77,39 @@ st.markdown(
     .main .block-container { padding: 2rem 4rem; }
     .card { background-color: #eaf4ff; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 25px; margin-bottom: 25px; border-left: 5px solid #4a90e2; transition: transform .18s; }
     .card:hover { transform: translateY(-5px); box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
-    .stButton>button { color: #fff; background-color: #4a90e2; border-radius: 8px; padding: 10px 22px; font-weight:600; }
+    .stButton>button { color: #fff; background-color: #4a90e2; border-radius: 8px; padding: 10px 22px; font-weight:600; border: none; }
+    .stButton>button:hover { background-color: #357bd9; }
+    .st-emotion-cache-1av55r7 {
+        border-radius: 20px;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+        background-color: #ffffff;
+        padding: 35px;
+        border: none;
+    }
+    .st-emotion-cache-16p649c {
+        border: none;
+        border-radius: 15px;
+        background-color: #f0f4f8;
+        padding: 20px;
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    .st-emotion-cache-12oz5g7 {
+        background-color: #eaf4ff;
+        border-radius: 15px;
+        padding: 15px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        border-left: 5px solid #4a90e2;
+    }
+    .st-emotion-cache-12oz5g7:hover {
+        background-color: #dbeaff;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 # ---------- SERVICES ----------
-GEMINI_API_KEY = None
-if st.secrets:
-    GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or GEMINI_API_KEY
-if not GEMINI_API_KEY:
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
 
 ai_available = False
 if GEMINI_API_KEY and genai:
@@ -96,15 +123,8 @@ if GEMINI_API_KEY and genai:
 else:
     st.sidebar.info("AI: Local fallback mode (no GEMINI key).")
 
-SUPABASE_URL = None
-SUPABASE_KEY = None
-if st.secrets:
-    SUPABASE_URL = st.secrets.get("SUPABASE_URL") or SUPABASE_URL
-    SUPABASE_KEY = st.secrets.get("SUPABASE_KEY") or SUPABASE_KEY
-if not SUPABASE_URL:
-    SUPABASE_URL = os.getenv("SUPABASE_URL")
-if not SUPABASE_KEY:
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_URL = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
 
 supabase = None
 db_connected = False
@@ -153,7 +173,7 @@ def now_ts(): return time.time()
 
 def clean_text_for_ai(text: str) -> str:
     if not text: return ""
-    cleaned = re.sub(r"[^\x00-\x7F]+", " ", text)   # strip non-ascii (emojis)
+    cleaned = re.sub(r"[^\x00-\x7F]+", " ", text)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
 
@@ -217,7 +237,6 @@ def record_audio(duration=5, fs=44100):
         st.warning("wavio not installed — returning None for audio file.")
         return None
 
-# Browser TTS first, then pyttsx3 local fallback
 def browser_tts(text: str) -> bool:
     try:
         payload = json.dumps({"text": text})
@@ -380,7 +399,6 @@ def mood_tracker_panel():
             entry = {"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "mood": mood, "note": note}
             st.session_state["mood_history"].append(entry)
 
-            # update streaks safely
             last_date = st.session_state["streaks"].get("last_mood_date")
             today = datetime.now().date()
             if last_date:
@@ -403,7 +421,6 @@ def mood_tracker_panel():
 
             st.success("Mood logged. Tiny step, big impact.")
 
-            # badges
             for name, rule in BADGE_RULES:
                 try:
                     if rule({"mood_history": st.session_state["mood_history"], "streaks": st.session_state["streaks"]}):
@@ -655,7 +672,6 @@ def personalized_report_panel():
     st.subheader("AI Summary")
     st.markdown(summary)
 
-    # Optional PDF export
     if st.button("Export as PDF"):
         if pdf_canvas:
             buffer = io.BytesIO()
