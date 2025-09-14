@@ -28,102 +28,53 @@ else:
     st.sidebar.warning("Database not connected 🔴")
 
 # --- Custom Styling & Theme ---
-st.set_page_config(
-    page_title="AI Wellness Companion",
-    page_icon="🧠",
-    layout="wide",
-)
+st.markdown("""
+<style>
+/* Background */
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%);
+    color: #1c1c1c;
+    font-family: 'Poppins', sans-serif;
+}
 
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(12px);
+    border-radius: 15px;
+}
 
-    .stApp {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        color: #2c3e50;
-        font-family: 'Poppins', sans-serif;
-    }
-    .main .block-container {
-        padding: 2rem 4rem;
-    }
-    .st-emotion-cache-1av55r7 {
-        border-radius: 20px;
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
-        background-color: #ffffff;
-        padding: 35px;
-        border: none;
-    }
-    .st-emotion-cache-16p649c {
-        border: none;
-        border-radius: 15px;
-        background-color: #f0f4f8;
-        padding: 20px;
-        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
-    }
-    .card {
-        background-color: #eaf4ff;
-        border-radius: 15px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-        padding: 25px;
-        margin-bottom: 25px;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-        border-left: 5px solid #4a90e2;
-    }
-    .card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-    }
-    .quote-box {
-        background-color: #dbeaff;
-        border-radius: 15px;
-        padding: 30px;
-        text-align: center;
-        border: none;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    }
-    .st-emotion-cache-h5h9p4 {
-        color: #ffffff;
-        background-color: #4a90e2;
-        border-radius: 8px;
-        border: none;
-        padding: 12px 24px;
-        font-size: 16px;
-        font-weight: 600;
-        transition: background-color 0.3s ease, transform 0.2s ease;
-    }
-    .st-emotion-cache-h5h9p4:hover {
-        background-color: #357bd9;
-        transform: translateY(-2px);
-    }
-    .card-pink {
-        background-color: #fff0f5;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        padding: 20px;
-        margin-bottom: 20px;
-        border-left: 5px solid #ff69b4;
-    }
-    .card-mint {
-        background-color: #e6f7f2;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        padding: 20px;
-        margin-bottom: 20px;
-        border-left: 5px solid #48c9b0;
-    }
-    .card-lavender {
-        background-color: #f0e6f7;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        padding: 20px;
-        margin-bottom: 20px;
-        border-left: 5px solid #9b59b6;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+/* Chat Bubbles */
+.stChatMessage.user {
+    background: #4facfe;
+    color: white;
+    border-radius: 18px 18px 0 18px;
+    padding: 12px 18px;
+    margin: 5px;
+}
+.stChatMessage.assistant {
+    background: #43e97b;
+    color: white;
+    border-radius: 18px 18px 18px 0;
+    padding: 12px 18px;
+    margin: 5px;
+}
+
+/* Buttons */
+.stButton button {
+    background: linear-gradient(90deg, #ff758c, #ff7eb3);
+    color: white;
+    border-radius: 30px;
+    padding: 8px 20px;
+    font-weight: bold;
+    transition: 0.3s;
+}
+.stButton button:hover {
+    transform: scale(1.05);
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.sidebar.header("Navigation")
 
 # --- Load API Key and Configure Model ---
