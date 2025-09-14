@@ -343,11 +343,11 @@ def mindful_breathing():
         st.session_state.breathing_phase = "Inhale"
         st.session_state.current_cycle = 0
         st.session_state.is_running = False
-        st.experimental_rerun()
+        st.rerun()
 
     if start_button:
         st.session_state.is_running = True
-        st.experimental_rerun()
+        st.rerun()
 
     if st.session_state.is_running:
         for cycle in range(st.session_state.current_cycle, 5): # 5 cycles of breathing
