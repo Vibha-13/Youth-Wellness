@@ -37,42 +37,49 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+    
     .stApp {
-        background: linear-gradient(135deg, #f0f2f5 0%, #d9e2ef 100%);
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
         color: #2c3e50;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-family: 'Poppins', sans-serif;
     }
     .main .block-container {
-        padding: 2rem 3rem;
+        padding: 2rem 4rem;
     }
     .st-emotion-cache-1av55r7 {
-        border-radius: 15px;
-        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        border-radius: 20px;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
         background-color: #ffffff;
-        padding: 30px;
-        border: 1px solid #e1e4e8;
+        padding: 35px;
+        border: none;
     }
     .st-emotion-cache-16p649c {
-        border: 2px solid #b3cde0;
+        border: none;
         border-radius: 15px;
-        background-color: #f8f9fa;
-        padding: 15px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        background-color: #f0f4f8;
+        padding: 20px;
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
     }
     .card {
         background-color: #eaf4ff;
         border-radius: 15px;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
         padding: 25px;
         margin-bottom: 25px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
         border-left: 5px solid #4a90e2;
+    }
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
     }
     .quote-box {
         background-color: #dbeaff;
         border-radius: 15px;
-        padding: 25px;
+        padding: 30px;
         text-align: center;
-        border: 2px solid #a8c4ff;
+        border: none;
         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     }
     .st-emotion-cache-h5h9p4 {
@@ -80,12 +87,14 @@ st.markdown(
         background-color: #4a90e2;
         border-radius: 8px;
         border: none;
-        padding: 10px 20px;
+        padding: 12px 24px;
         font-size: 16px;
-        transition: background-color 0.3s ease;
+        font-weight: 600;
+        transition: background-color 0.3s ease, transform 0.2s ease;
     }
     .st-emotion-cache-h5h9p4:hover {
         background-color: #357bd9;
+        transform: translateY(-2px);
     }
     .card-pink {
         background-color: #fff0f5;
@@ -151,6 +160,8 @@ if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = None
+if 'user_email' not in st.session_state:
+    st.session_state['user_email'] = None
 
 # --- Core Functions ---
 def get_ai_response(prompt_messages):
@@ -168,7 +179,7 @@ def get_ai_response(prompt_messages):
             return response.text
         except Exception as e:
             st.warning("AI API failed. Using local model for now.")
-            st.error(f"Full API Error: {e}")  # THIS IS THE NEW LINE
+            st.error(f"Full API Error: {e}")
             # Fallback will run below
     else:
         # Fallback will run below
@@ -192,10 +203,10 @@ def get_ai_response(prompt_messages):
             "Your feelings are valid. What happened next?",
         ]
         ai_reply = random.choice(responses)
-
+        
     if sentiment_score < -0.5:
         ai_reply += " Remember, if you're going through a lot, reaching out to a professional is a great step. You don't have to carry this alone."
-
+        
     return ai_reply
 
 def get_sentiment(text):
@@ -321,7 +332,7 @@ def user_authentication():
             else:
                 st.sidebar.warning("Please enter a valid email.")
     else:
-        st.sidebar.write("Logged in as:", st.session_state.user_email if 'user_email' in st.session_state else "User")
+        st.sidebar.write("Logged in as:", st.session_state.user_email)
         if st.sidebar.button("Logout"):
             st.session_state['logged_in'] = False
             st.session_state['user_id'] = None
@@ -335,7 +346,6 @@ def mindful_breathing():
     st.title("Find Your Calm")
     st.markdown("Let your breath guide you back to peace and center.")
 
-    # State for the breathing exercise
     if 'breathing_phase' not in st.session_state:
         st.session_state.breathing_phase = "Inhale"
     if 'current_cycle' not in st.session_state:
@@ -350,7 +360,6 @@ def mindful_breathing():
     }
     
     phases = list(breathing_pattern.keys())
-    current_phase_index = phases.index(st.session_state.breathing_phase)
     
     col1, col2 = st.columns(2)
     with col1:
@@ -369,8 +378,8 @@ def mindful_breathing():
         st.rerun()
 
     if st.session_state.is_running:
-        for cycle in range(st.session_state.current_cycle, 5): # 5 cycles of breathing
-            for i, phase in enumerate(phases):
+        for cycle in range(st.session_state.current_cycle, 5):
+            for phase in phases:
                 st.session_state.breathing_phase = phase
                 st.session_state.current_cycle = cycle + 1
                 
@@ -385,33 +394,69 @@ def mindful_breathing():
             if st.session_state.current_cycle == 5:
                 st.balloons()
                 st.session_state.is_running = False
+                st.experimental_rerun()
 
     st.subheader("Progress")
     overall_progress = (st.session_state.current_cycle) / 5
     st.progress(overall_progress)
     st.write(f"Overall Progress: {int(overall_progress * 100)}%")
 
+def mindful_journaling():
+    st.title("Mindful Journaling")
+    
+    with st.container(border=True):
+        st.markdown("<div class='card-lavender'>", unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <p style='font-weight: bold;'>Today's Reflection:</p>
+            <p>What made you smile today, even if it was small?</p>
+            """, unsafe_allow_html=True
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    journal_entry = st.text_area("Pour your heart out here... There's no judgment, only compassion. Write whatever feels right for you in this moment.", height=200)
+    
+    if st.button("Save Entry", key="journal_save_button"):
+        if journal_entry:
+            sentiment_score = get_sentiment(journal_entry)['compound']
+            if st.session_state.logged_in:
+                save_journal_entry_to_db(journal_entry, sentiment_score)
+            else:
+                st.session_state.daily_journal.append({
+                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "text": journal_entry,
+                    "sentiment": sentiment_score
+                })
+            st.success("Journal entry saved successfully!")
+            st.rerun()
+        else:
+            st.warning("Please write something before saving.")
+
 # --- Main app pages ---
 def homepage():
     st.title("Your Wellness Sanctuary")
     st.markdown("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
-    st.image("https://images.unsplash.com/photo-1549490349-f06b3e942007?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D")
 
-    st.header("Daily Inspiration")
-    with st.container(border=True):
-        st.markdown("<div class='quote-box'>", unsafe_allow_html=True)
-        st.markdown("<h3>Words of Hope</h3>", unsafe_allow_html=True)
-        st.markdown("<p>Sometimes we need gentle reminders of our strength and worth.</p>", unsafe_allow_html=True)
-        st.markdown(
-            f"""
-            <p style='font-style: italic; font-size: 1.2rem; margin-top: 20px;'>
-                "You are braver than you believe, stronger than you seem, and more loved than you know."
-            </p>
-            <p style='text-align: right; margin-top: 10px;'>
-                - A.A. Milne
-            </p>
-            """, unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.header("Daily Inspiration")
+        with st.container(border=True):
+            st.markdown("<div class='quote-box'>", unsafe_allow_html=True)
+            st.markdown("<h3>Words of Hope</h3>", unsafe_allow_html=True)
+            st.markdown(
+                f"""
+                <p style='font-style: italic; font-size: 1.2rem; margin-top: 20px;'>
+                    "You are braver than you believe, stronger than you seem, and more loved than you know."
+                </p>
+                <p style='text-align: right; margin-top: 10px;'>
+                    - A.A. Milne
+                </p>
+                """, unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    with col2:
+        st.image("https://images.unsplash.com/photo-1549490349-f06b3e942007?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D", caption="Take a moment for yourself")
 
     st.header("How It Works")
     with st.container(border=True):
@@ -425,10 +470,10 @@ def homepage():
 
     st.header("Daily Mood Tracker")
     with st.container(border=True):
-        col1, col2 = st.columns([2, 1])
-        with col1:
+        col3, col4 = st.columns([2, 1])
+        with col3:
             mood_value = st.slider("Rate your mood today:", 1, 10, 5)
-        with col2:
+        with col4:
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("Log Mood", key="log_mood_button"):
                 st.session_state.mood_history.append({'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 'mood': mood_value})
@@ -698,11 +743,10 @@ def crisis_support():
     st.markdown("4. **2 Things** you can **smell**.")
     st.markdown("5. **1 Thing** you can **taste**.")
 
-
 # --- Navigation logic ---
 user_authentication()
 
-page = st.sidebar.radio("Go to:", ('Home', 'AI Doc Chat', 'Call Session', 'Journal & Analysis', 'Personalized Report', 'My Emotional Journey', 'Mindful Breathing', 'Crisis Support'))
+page = st.sidebar.radio("Go to:", ('Home', 'AI Doc Chat', 'Call Session', 'Mindful Journaling', 'Journal & Analysis', 'Personalized Report', 'My Emotional Journey', 'Mindful Breathing', 'Crisis Support'))
 
 if page == 'Home':
     st.session_state['page'] = 'home'
@@ -713,6 +757,9 @@ elif page == 'AI Doc Chat':
 elif page == 'Call Session':
     st.session_state['page'] = 'call'
     call_session()
+elif page == 'Mindful Journaling':
+    st.session_state['page'] = 'journaling'
+    mindful_journaling()
 elif page == 'Journal & Analysis':
     st.session_state['page'] = 'journal'
     journal_and_analysis()
