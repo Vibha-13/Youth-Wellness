@@ -601,10 +601,23 @@ def mini_quiz_panel():
     for i, item in enumerate(questions):
         ans = st.radio(item["q"], item["a"], key=f"q{i}")
         answers.append(ans)
+    
     if st.button("Get Suggestion"):
-        suggestion = safe_generate("User choices: " + ", ".join(answers))
         st.subheader("Suggestion:")
-        st.info(suggestion)
+        if ai_available:
+            try:
+                prompt = f"""
+                Based on these choices, provide a short, single-paragraph, supportive wellness suggestion.
+                User choices: {', '.join(answers)}.
+                """
+                suggestion = model.generate_content(prompt).text
+                st.info(suggestion)
+            except Exception:
+                st.warning("AI generation failed. A simple suggestion is provided instead.")
+                st.info("Taking a moment for yourself can make a big difference. Try a quick break or listen to some calming music.")
+        else:
+            st.info("Taking a moment for yourself can make a big difference. Try a quick break or listen to some calming music.")
+            
         if "Mood Booster" not in st.session_state["streaks"]["badges"]:
             st.session_state["streaks"]["badges"].append("Mood Booster")
         st.rerun()
