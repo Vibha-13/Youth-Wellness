@@ -144,7 +144,7 @@ def get_ai_response(prompt_messages):
     Attempts to get a response from an AI API,
     falling back to a local response if the API call fails.
     """
-    analyzer = SentimentIntensityConverter()
+    analyzer = SentimentIntensityAnalyzer()
     last_user_message = prompt_messages[-1]['content']
     sentiment_score = analyzer.polarity_scores(last_user_message)['compound']
 
