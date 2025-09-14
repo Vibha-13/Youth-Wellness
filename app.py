@@ -613,58 +613,70 @@ Use empathetic tone and offer gentle encouragement. Data:
             st.warning("AI generation failed; showing fallback.")
     fallback_story = "You’ve been carrying a lot — and showing up to this app is a small brave step. Over time, small acts of care add up. Keep logging your moments and celebrate tiny wins."
     st.markdown(fallback_story)
-    
+
 def personalized_report_panel():
     st.header("Personalized Report")
     all_text = get_all_user_text()
     if not all_text:
         st.info("No data yet. Start journaling or chatting to generate a report.")
         return
+
     entries = []
     for e in st.session_state["daily_journal"]:
         entries.append(e)
     for ch in st.session_state["call_history"]:
         if ch.get("speaker") == "User":
-            entries.append({"date": datetime.fromtimestamp(ch.get("timestamp")).strftime("%Y-%m-%d %H:%M:%S"), "text": ch.get("text"), "sentiment": sentiment_compound(ch.get("text",""))})
+            entries.append({
+                "date": datetime.fromtimestamp(ch.get("timestamp")).strftime("%Y-%m-%d %H:%M:%S"),
+                "text": ch.get("text"),
+                "sentiment": sentiment_compound(ch.get("text", "")),
+            })
     df = pd.DataFrame(entries)
-    pos = len(df[df.get("sentiment",0) >= 0.05]) if not df.empty else 0
-    neg = len(df[df.get("sentiment",0) <= -0.05]) if not df.empty else 0
-    neut = len(df) - pos - neg if not df.empty else 0
-    st.subheader("Analysis Summary")
-    st.markdown(f"**Entries analyzed:** {len(df)}")
-    st.markdown(f"- Positive: {pos}")
-    st.markdown(f"- Neutral: {neut}")
-    st.markdown(f"- Negative: {neg}")
-    insight_prompt = f"Summarize the main emotional themes in these notes and give 3 gentle suggestions: {clean_text_for_ai(all_text)[:4000]}"
-    insight = safe_generate(insight_prompt)
-    st.subheader("AI Insight")
-    st.write(insight)
-    report_text = f"Summary generated on {datetime.now().strftime('%Y-%m-%d')}\nEntries: {len(df)}\nPositive:{pos}\nNeutral:{neut}\nNegative:{neg}\n\nAI Insight:\n{insight}\n\nRaw text:\n{all_text}"
-    if pdf_canvas:
+
+    pos = len(df[df["sentiment"] >= 0.05]) if not df.empty else 0
+    neg = len(df[df["sentiment"] <= -0.05]) if not df.empty else 0
+    neu = len(df) - pos - neg if not df.empty else 0
+
+    st.subheader("Sentiment Breakdown")
+    st.write(f"- Positive entries: {pos}")
+    st.write(f"- Neutral entries: {neu}")
+    st.write(f"- Negative entries: {neg}")
+
+    if ai_available:
         try:
-            mem = io.BytesIO()
-            c = pdf_canvas(mem, pagesize=letter)
-            width, height = letter
-            y = height - 40
-            c.setFont('Helvetica-Bold', 14)
-            c.drawString(40, y, 'Personalized Wellness Report')
-            y -= 30
-            c.setFont('Helvetica', 10)
-            for line in report_text.split('\n'):
-                if y < 60:
-                    c.showPage()
-                    y = height - 40
-                    c.setFont('Helvetica', 10)
-                c.drawString(40, y, line[:120])
-                y -= 14
-            c.save()
-            mem.seek(0)
-            st.download_button('Download Report (PDF)', data=mem, file_name='wellness_report.pdf', mime='application/pdf')
-        except Exception as e:
-            st.warning(f"PDF generation failed: {e}")
-            st.download_button('Download Report (TXT)', data=report_text, file_name='wellness_report.txt', mime='text/plain')
+            summary = model.generate_content(
+                f"Summarize this person’s emotional trends in a supportive way:\n\n{all_text[:4000]}"
+            ).text
+        except Exception:
+            summary = "Summary unavailable due to AI error."
     else:
-        st.download_button('Download Report (TXT)', data=report_text, file_name='wellness_report.txt', mime='text/plain')
+        summary = "Based on your recent entries, you’re showing resilience and self-awareness. Keep going!"
+
+    st.subheader("AI Summary")
+    st.markdown(summary)
+
+    # Optional PDF export
+    if st.button("Export as PDF"):
+        if pdf_canvas:
+            buffer = io.BytesIO()
+            c = pdf_canvas.Canvas(buffer, pagesize=letter)
+            c.setFont("Helvetica", 12)
+            text_obj = c.beginText(40, 750)
+            text_obj.textLine("Personalized Wellness Report")
+            text_obj.textLine("")
+            text_obj.textLines(summary)
+            c.drawText(text_obj)
+            c.showPage()
+            c.save()
+            buffer.seek(0)
+            st.download_button(
+                "Download Report",
+                buffer,
+                file_name="wellness_report.pdf",
+                mime="application/pdf",
+            )
+        else:
+            st.warning("PDF export not available in this environment.")
 
 def crisis_support_panel():
     st.header("Crisis Support — Immediate Resources")
