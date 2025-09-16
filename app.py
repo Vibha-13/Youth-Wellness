@@ -124,18 +124,18 @@ st.sidebar.markdown(f"- AI: **{'Connected' if ai_available else 'Local (fallback
 st.sidebar.markdown(f"- DB: **{'Connected' if db_connected else 'Not connected'}**")
 
 # ---------- STATE ----------
-if "messages" not in st.session_state: st.session_state["messages"] = []
-if "call_history" not in st.session_state: st.session_state["call_history"] = []
+if "chat_messages" not in st.session_state: st.session_state.chat_messages = []
 if "daily_journal" not in st.session_state: st.session_state["daily_journal"] = []
 if "mood_history" not in st.session_state: st.session_state["mood_history"] = []
 if "streaks" not in st.session_state:
     st.session_state["streaks"] = {"mood_log": 0, "last_mood_date": None, "badges": []}
-if "transcription_text" not in st.session_state: st.session_state["transcription_text"] = ""
 if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
 if "user_id" not in st.session_state: st.session_state["user_id"] = None
 if "user_email" not in st.session_state: st.session_state["user_email"] = None
 if "phq9_score" not in st.session_state: st.session_state.phq9_score = None
 if "phq9_interpretation" not in st.session_state: st.session_state.phq9_interpretation = None
+if "breathing_running" not in st.session_state: st.session_state.breathing_running = False
+if "breathing_cycle" not in st.session_state: st.session_state.breathing_cycle = 0
 
 analyzer = SentimentIntensityAnalyzer()
 
@@ -170,8 +170,7 @@ def sentiment_compound(text: str) -> float:
 def get_all_user_text() -> str:
     parts = []
     parts += [e.get("text","") for e in st.session_state["daily_journal"] if e.get("text")]
-    parts += [m.get("content","") for m in st.session_state["messages"] if m.get("role") == "user" and m.get("content")]
-    parts += [c.get("text","") for c in st.session_state["call_history"] if c.get("speaker") == "User" and c.get("text")]
+    parts += [m.get("content","") for m in st.session_state["chat_messages"] if m.get("role") == "user" and m.get("content")]
     return " ".join(parts).strip()
 
 def generate_wordcloud_figure(text: str):
@@ -269,6 +268,22 @@ def sidebar_auth():
             st.rerun()
 
 # ---------- App panels ----------
+QUOTES = [
+    "You are stronger than you think. 💪",
+    "Even small steps count. 🌱",
+    "Breathe. You are doing your best. 🌬️",
+    "This moment will pass. You're doing important work by being here. 💛",
+    "Progress, not perfection. Tiny steps add up."
+]
+
+MOOD_EMOJI_MAP = {1:"😭",2:"😢",3:"😔",4:"😕",5:"😐",6:"🙂",7:"😊",8:"😄",9:"🤩",10:"🥳", 11: "✨"}
+
+BADGE_RULES = [
+    ("Getting Started", lambda s: len(s["mood_history"]) >= 1),
+    ("Weekly Streak: 3", lambda s: s.get("streaks", {}).get("mood_log", 0) >= 3),
+    ("Consistent 7", lambda s: s.get("streaks", {}).get("mood_log", 0) >= 7),
+]
+
 def homepage_panel():
     st.title("Your Wellness Sanctuary")
     st.markdown("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
@@ -366,7 +381,7 @@ def ai_chat_panel():
     st.header("AI Chat")
     st.markdown("A compassionate AI buddy to listen.")
 
-    if "chat_messages" not in st.session_state:
+    if not st.session_state.chat_messages:
         st.session_state.chat_messages = [{"role": "assistant", "content": "Hello, I'm here to listen. What's on your mind today?"}]
 
     for message in st.session_state.chat_messages:
@@ -401,10 +416,7 @@ def mindful_breathing_panel():
     if st.button("Reset", key="reset_breathing_btn"):
         st.session_state.breathing_running = False
         st.session_state.breathing_cycle = 0
-        
-    if "breathing_running" not in st.session_state:
-        st.session_state.breathing_running = False
-        st.session_state.breathing_cycle = 0
+        st.rerun()
     
     if st.session_state.breathing_running:
         st.info(f"Cycle {st.session_state.breathing_cycle + 1} of 3")
@@ -590,14 +602,15 @@ def personalized_report_panel():
     entries = []
     for e in st.session_state["daily_journal"]:
         entries.append(e)
-    for ch in st.session_state["call_history"]:
-        if ch.get("speaker") == "User":
-            entries.append({
-                "date": datetime.fromtimestamp(ch.get("timestamp")).strftime("%Y-%m-%d %H:%M:%S"),
-                "text": ch.get("text"),
-                "sentiment": sentiment_compound(ch.get("text", "")),
-            })
-    df = pd.DataFrame(entries)
+    
+    chat_entries = [{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "text": msg["content"], "sentiment": sentiment_compound(msg["content"])} for msg in st.session_state.chat_messages if msg["role"] == "user"]
+    entries.extend(chat_entries)
+
+    if entries:
+        df = pd.DataFrame(entries)
+    else:
+        st.info("No data available for a report.")
+        return
 
     pos = len(df[df["sentiment"] >= 0.05]) if not df.empty else 0
     neg = len(df[df["sentiment"] <= -0.05]) if not df.empty else 0
@@ -652,6 +665,7 @@ def main():
         "Mood Tracker": mood_tracker_panel,
         "Wellness Check-in": wellness_check_in_panel,
         "AI Chat": ai_chat_panel,
+        "AI Voice Chat": ai_chat_panel, # Directs to the same chat panel
         "Mindful Breathing": mindful_breathing_panel,
         "Mindful Journaling": mindful_journaling_panel,
         "Journal & Analysis": journal_analysis_panel,
