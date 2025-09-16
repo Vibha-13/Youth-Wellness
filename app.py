@@ -625,11 +625,13 @@ def wellness_check_in_panel():
         for i, q in enumerate(phq_questions):
             response = st.radio(q, list(scores.keys()), key=f"phq9_q{i}")
             answers[q] = response
-            total_score += scores[response]
         
         submitted = st.form_submit_button("Get My Score")
 
     if submitted:
+        # Calculate the score after the form is submitted
+        total_score = sum(scores[answers[q]] for q in questions)
+        
         st.subheader("Your Score")
         st.markdown(f"**{total_score}** out of 27")
         
