@@ -32,21 +32,12 @@ try:
 except Exception:
     genai = None
 
-# Audio libs (not used, but kept for context)
-AudioSegment = None
-webrtc_streamer = None
-AudioProcessorBase = None
-pyttsx3 = None
-
 # Supabase (optional)
 try:
     from supabase import create_client, Client
 except Exception:
     create_client = None
     Client = None
-
-# Browser components (for TTS fallback)
-import streamlit.components.v1 as components
 
 # Optional PDF generator
 try:
@@ -148,22 +139,6 @@ if "phq9_interpretation" not in st.session_state: st.session_state.phq9_interpre
 
 analyzer = SentimentIntensityAnalyzer()
 
-# ---------- CONTENT ----------
-QUOTES = [
-    "You are stronger than you think. 💪",
-    "Even small steps count. 🌱",
-    "Breathe. You are doing your best. 🌬️",
-    "This moment will pass. You're doing important work by being here. 💛",
-    "Progress, not perfection. Tiny steps add up."
-]
-
-MOOD_EMOJI_MAP = {1:"😭",2:"😢",3:"😔",4:"😕",5:"😐",6:"🙂",7:"😊",8:"😄",9:"🤩",10:"🥳", 11: "✨"}
-BADGE_RULES = [
-    ("Getting Started", lambda s: len(s["mood_history"]) >= 1),
-    ("Weekly Streak: 3", lambda s: s.get("streaks", {}).get("mood_log", 0) >= 3),
-    ("Consistent 7", lambda s: s.get("streaks", {}).get("mood_log", 0) >= 7),
-]
-
 # ---------- HELPERS ----------
 def now_ts(): return time.time()
 
@@ -210,27 +185,6 @@ def generate_wordcloud_figure(text: str):
     except Exception as e:
         st.warning(f"WordCloud failed: {e}")
         return None
-
-def browser_tts(text: str) -> bool:
-    try:
-        payload = json.dumps({"text": text})
-        components.html(f"""
-            <script>
-            const payload = {payload};
-            const utter = new SpeechSynthesisUtterance(payload.text);
-            utter.rate = 1.0;
-            window.speechSynthesis.cancel();
-            window.speechSynthesis.speak(utter);
-            </script>
-        """, height=0)
-        return True
-    except Exception:
-        return False
-
-def speak_text(text: str):
-    if not text: return
-    if browser_tts(text):
-        return
 
 # ---------- Supabase helpers (guarded) ----------
 def register_user_db(email: str):
@@ -332,7 +286,7 @@ def homepage_panel():
                 st.rerun()
         with c2:
             if st.button("Talk to AI"):
-                st.session_state["page"] = "AI Doc Chat"
+                st.session_state["page"] = "AI Chat"
                 st.rerun()
         with c3:
             if st.button("Journal"):
@@ -347,7 +301,7 @@ def homepage_panel():
         st.markdown("#### Mood Tracker")
         st.markdown("Log quick mood ratings and unlock badges.")
     with f2:
-        st.markdown("#### AI Doc Chat")
+        st.markdown("#### AI Chat")
         st.markdown("A compassionate AI to listen and suggest small exercises.")
     with f3:
         st.markdown("#### Journal & Insights")
@@ -408,343 +362,75 @@ def mood_tracker_panel():
         fig = px.line(df, x='date', y='mood', title="Mood Over Time", markers=True)
         st.plotly_chart(fig, use_container_width=True)
 
-def ai_doc_chat_panel():
-    st.header("AI Doc Chat")
+def ai_chat_panel():
+    st.header("AI Chat")
     st.markdown("A compassionate AI buddy to listen.")
-    for message in st.session_state["messages"]:
-        role = message.get("role", "user")
-        try:
-            with st.chat_message(role):
-                st.markdown(message.get("content", ""))
-        except Exception:
-            if role == "user":
-                st.markdown(f"**You:** {message.get('content','')}")
-            else:
-                st.markdown(f"**AI:** {message.get('content','')}")
+
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = [{"role": "assistant", "content": "Hello, I'm here to listen. What's on your mind today?"}]
+
+    for message in st.session_state.chat_messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
     if prompt := st.chat_input("What's on your mind?"):
-        st.session_state["messages"].append({"role":"user","content":prompt,"ts":now_ts()})
+        st.session_state.chat_messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
+
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                prompt_context = "\n\n".join([m["content"] for m in st.session_state["messages"][-6:]])
-                ai_resp = safe_generate(prompt_context)
-                st.markdown(ai_resp)
-                st.session_state["messages"].append({"role":"assistant","content":ai_resp,"ts":now_ts()})
-        st.rerun()
-
-@st.fragment
-def ai_response_fragment(user_message):
-    st.session_state["messages"].append({"role":"user","content":user_message,"ts":now_ts()})
-    prompt_context = "\n\n".join([m["content"] for m in st.session_state["messages"][-6:]])
-    ai_resp = safe_generate(prompt_context)
-    st.session_state["messages"].append({"role":"assistant","content":ai_resp,"ts":now_ts()})
-    return ai_resp
-
-def call_session_panel():
-    st.header("AI Voice Chat (New!)")
-    st.markdown("Experience a conversational AI companion.")
-    
-    # Check if a message was sent from the JavaScript frontend
-    if "user_message" in st.query_params:
-        user_message = st.query_params["user_message"]
-        st.session_state.call_history.append({"speaker": "User", "text": user_message, "timestamp": now_ts()})
-        ai_response = ai_response_fragment(user_message)
-        st.session_state.call_history.append({"speaker": "AI", "text": ai_response, "timestamp": now_ts()})
-        # Clear the query params after processing to prevent a loop
-        del st.query_params["user_message"]
-        # Immediately rerun to show the updated chat history
-        st.rerun()
-
-    # Embedded HTML content for the voice chat
-    html_content = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Voice Chat</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-            body {
-                font-family: 'Inter', sans-serif;
-                background: linear-gradient(135deg, #f0f4f8, #c3cfe2);
-                height: 100vh;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-            }
-            .chat-container {
-                width: 90%;
-                max-width: 600px;
-                height: 80vh;
-                display: flex;
-                flex-direction: column;
-                border-radius: 1.5rem;
-                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-                background-color: #ffffff;
-                overflow: hidden;
-            }
-            .chat-header {
-                background-color: #4a90e2;
-                color: white;
-                padding: 1.5rem;
-                text-align: center;
-                font-size: 1.5rem;
-                font-weight: 700;
-            }
-            .chat-messages {
-                flex-grow: 1;
-                padding: 1.5rem;
-                overflow-y: auto;
-                display: flex;
-                flex-direction: column;
-                gap: 1rem;
-            }
-            .message {
-                max-width: 80%;
-                padding: 0.75rem 1rem;
-                border-radius: 1rem;
-                line-height: 1.5;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-            }
-            .user-message {
-                background-color: #e2e8f0;
-                align-self: flex-end;
-                border-bottom-right-radius: 0.25rem;
-            }
-            .ai-message {
-                background-color: #dbeafe;
-                align-self: flex-start;
-                border-bottom-left-radius: 0.25rem;
-            }
-            .chat-input-area {
-                display: flex;
-                padding: 1rem;
-                background-color: #f7fafc;
-                border-top: 1px solid #e2e8f0;
-            }
-            #text-input {
-                flex-grow: 1;
-                border: 2px solid #e2e8f0;
-                border-radius: 1.5rem;
-                padding: 0.75rem 1.5rem;
-                transition: all 0.2s;
-            }
-            #text-input:focus {
-                outline: none;
-                border-color: #4a90e2;
-            }
-            #send-button, #voice-button {
-                background-color: #4a90e2;
-                color: white;
-                padding: 0.75rem 1.5rem;
-                border-radius: 1.5rem;
-                border: none;
-                cursor: pointer;
-                transition: background-color 0.2s;
-                margin-left: 0.5rem;
-            }
-            #voice-button {
-                background-color: #4CAF50;
-            }
-            #voice-button.recording {
-                background-color: #f44336;
-            }
-            .loading-dots {
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                height: 2rem;
-            }
-            .loading-dot {
-                width: 0.5rem;
-                height: 0.5rem;
-                background-color: #4a90e2;
-                border-radius: 50%;
-                margin: 0 0.25rem;
-                animation: bounce 1.4s infinite ease-in-out both;
-            }
-            .loading-dot:nth-child(1) { animation-delay: -0.32s; }
-            .loading-dot:nth-child(2) { animation-delay: -0.16s; }
-            @keyframes bounce {
-                0%, 80%, 100% { transform: scale(0); }
-                40% { transform: scale(1); }
-            }
-        </style>
-    </head>
-    <body class="bg-gray-100 font-sans">
-        <div class="chat-container">
-            <div class="chat-header">AI Wellness Companion</div>
-            <div id="chat-messages" class="chat-messages">
-                <div class="message ai-message">
-                    Hello, I'm here to listen. What's on your mind?
-                </div>
-            </div>
-            <div class="chat-input-area">
-                <input type="text" id="text-input" placeholder="Type your message..." />
-                <button id="send-button">Send</button>
-                <button id="voice-button" title="Start/Stop Voice Input">🎤</button>
-            </div>
-        </div>
-
-        <script>
-            const chatMessages = document.getElementById('chat-messages');
-            const textInput = document.getElementById('text-input');
-            const sendButton = document.getElementById('send-button');
-            const voiceButton = document.getElementById('voice-button');
-
-            let isRecording = false;
-            let recognition = null;
-            let isThinking = false;
-
-            function addMessageToUI(text, sender) {
-                const messageElement = document.createElement('div');
-                messageElement.classList.add('message', sender === 'user' ? 'user-message' : 'ai-message');
-                messageElement.textContent = text;
-                chatMessages.appendChild(messageElement);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }
-
-            function speakText(text) {
-                const utterance = new SpeechSynthesisUtterance(text);
-                window.speechSynthesis.speak(utterance);
-            }
-
-            async function getAIResponse(userMessage) {
-                if (isThinking) return;
-                isThinking = true;
-                addMessageToUI(userMessage, 'user');
-                textInput.value = '';
+                try:
+                    response = model.generate_content(prompt)
+                    ai_response = response.text
+                except Exception as e:
+                    ai_response = "I'm sorry, I'm having trouble right now. Please try again later."
                 
-                const loadingDots = document.createElement('div');
-                loadingDots.classList.add('loading-dots');
-                loadingDots.innerHTML = `<div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div>`;
-                chatMessages.appendChild(loadingDots);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-
-                try {
-                    // This is the key change: calling the Python backend instead of Gemini API directly
-                    const streamlitHost = window.parent.location.origin;
-                    const response = await fetch(streamlitHost + '/?user_message=' + encodeURIComponent(userMessage));
-                    const result = await response.text();
-                    
-                    chatMessages.removeChild(loadingDots);
-                    addMessageToUI(result, 'ai');
-                    speakText(result);
-                } catch (error) {
-                    console.error("Error fetching AI response from backend:", error);
-                    chatMessages.removeChild(loadingDots);
-                    const errorMessage = "I'm sorry, I'm having trouble connecting right now. Please try again later.";
-                    addMessageToUI(errorMessage, 'ai');
-                    speakText(errorMessage);
-                } finally {
-                    isThinking = false;
-                }
-            }
-
-            sendButton.addEventListener('click', () => {
-                const userMessage = textInput.value.trim();
-                if (userMessage) {
-                    getAIResponse(userMessage);
-                }
-            });
-
-            voiceButton.addEventListener('click', () => {
-                if (isRecording) {
-                    recognition.stop();
-                } else {
-                    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-                        recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-                        recognition.continuous = false;
-                        recognition.interimResults = false;
-                        recognition.lang = 'en-US';
-
-                        recognition.onstart = () => {
-                            isRecording = true;
-                            voiceButton.classList.add('recording');
-                            voiceButton.textContent = '🔴';
-                            textInput.placeholder = 'Listening...';
-                        };
-
-                        recognition.onresult = (event) => {
-                            const transcript = event.results[0][0].transcript;
-                            textInput.value = transcript;
-                            getAIResponse(transcript);
-                        };
-
-                        recognition.onerror = (event) => {
-                            console.error('Speech recognition error:', event.error);
-                            textInput.placeholder = 'Error listening. Try again.';
-                            isRecording = false;
-                            voiceButton.classList.remove('recording');
-                            voiceButton.textContent = '🎤';
-                        };
-
-                        recognition.onend = () => {
-                            isRecording = false;
-                            voiceButton.classList.remove('recording');
-                            voiceButton.textContent = '🎤';
-                            textInput.placeholder = 'Type or speak your message...';
-                        };
-
-                        recognition.start();
-                    } else {
-                        alert('Speech recognition is not supported in your browser.');
-                    }
-                }
-            });
-            
-            textInput.addEventListener('keypress', (event) => {
-                if (event.key === 'Enter') {
-                    sendButton.click();
-                }
-            });
-
-        </script>
-    </body>
-    </html>
-    """
-    st.components.v1.html(html_content, height=600)
+                st.markdown(ai_response)
+                st.session_state.chat_messages.append({"role": "assistant", "content": ai_response})
+        st.rerun()
 
 def mindful_breathing_panel():
-    st.header("Mindful Breathing — 4-4-6 (Short)")
+    st.header("Mindful Breathing")
     st.markdown("Follow the prompts: Inhale (4s) — Hold (4s) — Exhale (6s). Try 3 cycles.")
-    if "breath_running" not in st.session_state:
-        st.session_state.breath_running = False
-        st.session_state.breath_phase = ""
-        st.session_state.breath_cycle = 0
-    c1,c2 = st.columns(2)
-    with c1:
-        if st.button("Start Exercise"):
-            st.session_state.breath_running = True
-            st.session_state.breath_cycle = 0
-            st.rerun()
-    with c2:
-        if st.button("Reset"):
-            st.session_state.breath_running = False
-            st.session_state.breath_phase = ""
-            st.session_state.breath_cycle = 0
-            st.rerun()
-    if st.session_state.breath_running:
-        cycles = 3
-        pattern = [("Inhale",4),("Hold",4),("Exhale",6)]
-        for c in range(st.session_state.breath_cycle, cycles):
-            for phase, sec in pattern:
-                st.session_state.breath_phase = phase
-                st.markdown(f"**{phase}** — {sec} seconds")
-                placeholder = st.empty()
-                for t in range(sec,0,-1):
-                    placeholder.markdown(f"<h2 style='color:#374151'>{t}</h2>", unsafe_allow_html=True)
-                    time.sleep(1)
-                placeholder.empty()
-            st.session_state.breath_cycle = c+1
-            st.balloons()
-            st.rerun()
-        st.session_state.breath_running = False
-        st.success("Nice job — that was mindful breathing.")
+    
+    if st.button("Start Exercise", key="start_breathing_btn"):
+        st.session_state.breathing_running = True
+        st.session_state.breathing_cycle = 0
 
+    if st.button("Reset", key="reset_breathing_btn"):
+        st.session_state.breathing_running = False
+        st.session_state.breathing_cycle = 0
+        
+    if "breathing_running" not in st.session_state:
+        st.session_state.breathing_running = False
+        st.session_state.breathing_cycle = 0
+    
+    if st.session_state.breathing_running:
+        st.info(f"Cycle {st.session_state.breathing_cycle + 1} of 3")
+        placeholder = st.empty()
+        
+        # Inhale
+        placeholder.markdown("<h2 style='text-align: center; color: #4a90e2; font-size: 2em;'>Inhale</h2>", unsafe_allow_html=True)
+        time.sleep(4)
+        
+        # Hold
+        placeholder.markdown("<h2 style='text-align: center; color: #4a90e2; font-size: 2em;'>Hold</h2>", unsafe_allow_html=True)
+        time.sleep(4)
+        
+        # Exhale
+        placeholder.markdown("<h2 style='text-align: center; color: #4a90e2; font-size: 2em;'>Exhale</h2>", unsafe_allow_html=True)
+        time.sleep(6)
+        
+        st.session_state.breathing_cycle += 1
+        
+        if st.session_state.breathing_cycle >= 3:
+            st.session_state.breathing_running = False
+            placeholder.empty()
+            st.success("Exercise complete! You did a great job.")
+        else:
+            st.rerun()
+            
 def mindful_journaling_panel():
     st.header("Mindful Journaling")
     st.markdown("Write freely — your words are private here unless you save to your account.")
@@ -770,14 +456,15 @@ def journal_analysis_panel():
     st.header("Journal & Analysis")
     all_text = get_all_user_text()
     if not all_text:
-        st.info("No journal or call text yet — start journaling or talking to get insights.")
+        st.info("No journal or chat text yet — start journaling or talking to get insights.")
         return
     entries = []
     for e in st.session_state["daily_journal"]:
         entries.append({"date": pd.to_datetime(e["date"]), "compound": e.get("sentiment",0)})
-    for ch in st.session_state["call_history"]:
-        if ch.get("speaker") == "User":
-            entries.append({"date": pd.to_datetime(datetime.fromtimestamp(ch["timestamp"])), "compound": sentiment_compound(ch.get("text",""))})
+    
+    chat_entries = [{"date": datetime.now(), "compound": sentiment_compound(msg["content"])} for msg in st.session_state.chat_messages if msg["role"] == "user"]
+    entries.extend(chat_entries)
+
     if entries:
         df = pd.DataFrame(entries).sort_values("date")
         df["sentiment_label"] = df["compound"].apply(lambda x: "Positive" if x >= 0.05 else ("Negative" if x <= -0.05 else "Neutral"))
@@ -787,6 +474,7 @@ def journal_analysis_panel():
     if wc_fig:
         st.subheader("Word Cloud")
         st.pyplot(wc_fig, clear_figure=True)
+
 def wellness_check_in_panel():
     st.header("Wellness Check-in")
     st.markdown("This check-in is based on the **Patient Health Questionnaire (PHQ-9)**, a widely used tool for depression screening. It is a tool for self-reflection and **not a professional diagnosis**.")
@@ -963,8 +651,7 @@ def main():
         "Home": homepage_panel,
         "Mood Tracker": mood_tracker_panel,
         "Wellness Check-in": wellness_check_in_panel,
-        "AI Doc Chat": ai_doc_chat_panel,
-        "AI Voice Chat": call_session_panel,
+        "AI Chat": ai_chat_panel,
         "Mindful Breathing": mindful_breathing_panel,
         "Mindful Journaling": mindful_journaling_panel,
         "Journal & Analysis": journal_analysis_panel,
