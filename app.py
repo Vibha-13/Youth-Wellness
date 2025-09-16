@@ -433,7 +433,7 @@ def ai_doc_chat_panel():
                 st.session_state["messages"].append({"role":"assistant","content":ai_resp,"ts":now_ts()})
         st.rerun()
 
-@st.experimental_fragment
+@st.fragment
 def ai_response_fragment(user_message):
     st.session_state["messages"].append({"role":"user","content":user_message,"ts":now_ts()})
     prompt_context = "\n\n".join([m["content"] for m in st.session_state["messages"][-6:]])
