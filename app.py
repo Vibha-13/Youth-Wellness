@@ -736,7 +736,7 @@ def main():
     pages = {
         "Home": homepage_panel,
         "Mood Tracker": mood_tracker_panel,
-        "Wellness Check-in": wellness_check_in_panel, # NEW QUIZ SECTION
+        "Wellness Check-in": wellness_check_in_panel,
         "AI Doc Chat": ai_doc_chat_panel,
         "Call Session": call_session_panel,
         "Mindful Breathing": mindful_breathing_panel,
@@ -747,14 +747,25 @@ def main():
         "Crisis Support": crisis_support_panel
     }
     
-    # Use session state to manage which page is shown
     page_names = list(pages.keys())
-    current_page_index = page_names.index(st.session_state.get("page", "Home"))
     
-    page = st.sidebar.radio("Go to:", page_names, index=current_page_index, key="sidebar_nav")
+    # Initialize session state for the page if it doesn't exist
+    if "page" not in st.session_state:
+        st.session_state["page"] = "Home"
+
+    # Use a try-except block to gracefully handle the case where a key might not exist
+    try:
+        current_page_index = page_names.index(st.session_state.get("page"))
+    except ValueError:
+        current_page_index = 0
+        st.session_state["page"] = "Home"
+
+    # Use the sidebar radio to update the page in session state
+    page = st.sidebar.radio("Go to:", page_names, index=current_page_index)
     st.session_state["page"] = page
     
-    func = pages.get(page)
+    # Render the selected page
+    func = pages.get(st.session_state.get("page"))
     if func:
         func()
     
