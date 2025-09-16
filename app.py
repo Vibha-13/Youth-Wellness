@@ -1,4 +1,3 @@
-# app.py
 """
 AI Wellness Companion - Upgraded UI + Full Features
 Preserves all previous features; improves visuals and fixes minor bugs.
@@ -433,15 +432,6 @@ def sidebar_auth():
 
 
 # ---------- APP PAGES (features preserved + improved styling) ----------
-# ---------- CONTENT ----------
-QUOTES = [
-    "You are stronger than you think. 💪",
-    "Even small steps count. 🌱",
-    "Breathe. You are doing your best. 🌬️",
-    "This moment will pass. 💛",
-    "Progress, not perfection. Tiny steps add up. ✨"
-]
-
 def homepage_panel():
     st.title("Your Wellness Sanctuary ✨")
     st.markdown("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
@@ -748,10 +738,12 @@ def wellness_check_in_panel():
         for i, q in enumerate(phq_questions):
             response = st.radio(q, list(scores.keys()), key=f"phq9_q{i}")
             answers[q] = response
+        
         submitted = st.form_submit_button("Get My Score")
 
     if submitted:
         total_score = sum(scores[answers[q]] for q in phq_questions)
+        
         interpretation = ""
         if total_score >= 20:
             interpretation = "Severe: strongly consider speaking to a professional."
@@ -763,7 +755,7 @@ def wellness_check_in_panel():
             interpretation = "Mild: self-care might help; track how you feel."
         else:
             interpretation = "Minimal to None."
-
+        
         st.session_state["phq9_score"] = total_score
         st.session_state["phq9_interpretation"] = interpretation
 
@@ -786,7 +778,7 @@ def emotional_journey_panel():
     if not all_text:
         st.info("Interact with the app more to build an emotional journey.")
         return
-
+    
     st.subheader("AI-generated narrative (empathetic)")
     prompt = f"Write a short, supportive, strength-focused 3-paragraph narrative about a person's recent emotional journey. Data:\n\n{all_text[:4000]}"
     if ai_available:
@@ -796,7 +788,7 @@ def emotional_journey_panel():
             story = "AI generation failed; showing a gentle fallback narrative."
     else:
         story = "You’ve been carrying a lot — and showing up to this app is a small brave step. Over time, small acts of care add up. Keep logging your moments."
-
+    
     st.markdown(story)
 
 
@@ -847,80 +839,77 @@ def personalized_report_panel():
             c.setFont("Helvetica-Bold", 14)
             c.drawString(40, 750, "Personalized Wellness Report")
             c.setFont("Helvetica", 10)
-            y = 730
-            for line in report_text.split("\n"):
-                if y < 60:
-                    c.showPage()
-                    y = 750
-                    c.setFont("Helvetica", 10)
-                c.drawString(40, y, line[:100])
-                y -= 12
+            c.drawString(40, 730, f"Date: {datetime.now().strftime('%Y-%m-%d')}")
+            
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(40, 690, "Sentiment Breakdown")
+            c.setFont("Helvetica", 10)
+            c.drawString(40, 670, f"Positive entries: {pos}")
+            c.drawString(40, 655, f"Neutral entries: {neu}")
+            c.drawString(40, 640, f"Negative entries: {neg}")
+            
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(40, 600, "AI Insight")
+            text_object = c.beginText(40, 580)
+            text_object.setFont("Helvetica", 10)
+            for line in insight.split('\n'):
+                text_object.textLine(line)
+            c.drawText(text_object)
+            
             c.save()
-            buffer.seek(0)
-            st.download_button("Download report (PDF)", data=buffer, file_name="wellness_report.pdf", mime="application/pdf")
+            st.download_button("Download report (PDF)", data=buffer.getvalue(), file_name="wellness_report.pdf", mime="application/pdf")
         except Exception as e:
-            st.warning(f"PDF export failed: {e}")
+            st.error(f"Failed to generate PDF: {e}")
 
-
-def crisis_support_panel():
-    st.header("Crisis Support — Immediate Resources")
-    st.markdown("If you are in immediate danger or thinking about harming yourself, please contact local emergency services now.")
-    st.markdown("**US hotline example:** Dial or text **988** for the Suicide & Crisis Lifeline (US). Please replace with your local emergency number if outside the US.")
-    st.markdown("**Grounding exercise (5-4-3-2-1):** Name: 5 things you can see, 4 you can touch, 3 you can hear, 2 you can smell, 1 you can taste.")
-    if st.button("Quick grounding"):
-        st.info("Look around and name 5 things you see right now.")
-        time.sleep(0.5)
-
-
-# ---------- NAVIGATION & APP MAIN ----------
 def main():
     with st.sidebar:
-        st.markdown("<h2 style='text-align:center;'>🧠 Wellness AI</h2>", unsafe_allow_html=True)
-        st.markdown("---")
-        nav_items = [
-            ("Home", "🏠"),
-            ("Mood Tracker", "📊"),
-            ("Wellness Check-in", "✅"),
-            ("AI Chat", "💬"),
-            ("Call Session", "📞"),
-            ("AI Voice Chat", "🗣️"),
-            ("Mindful Breathing", "🌬️"),
-            ("Mindful Journaling", "✍️"),
-            ("Journal & Analysis", "📈"),
-            ("My Emotional Journey", "💖"),
-            ("Personalized Report", "📄"),
-            ("Crisis Support", "🆘"),
-        ]
-        for name, emoji in nav_items:
-            if st.button(f"{emoji}  {name}", key=f"nav_{name}"):
-                st.session_state["page"] = name
-                st.rerun()
-
-        st.markdown("---")
+        st.markdown("<h2 style='text-align: center;'>🧠 Wellness AI</h2>", unsafe_allow_html=True)
         st.markdown(f"- AI: **{'Connected' if ai_available else 'Local (fallback)'}**")
         st.markdown(f"- DB: **{'Connected' if db_connected else 'Not connected'}**")
         st.markdown("---")
+
+        pages = {
+            "Home": "🏠 Home",
+            "Mood Tracker": "📊 Mood Tracker",
+            "Wellness Check-in": "✅ Check-in",
+            "AI Chat": "💬 AI Chat",
+            "Mindful Breathing": "🌬️ Breathing",
+            "Mindful Journaling": "✍️ Journaling",
+            "Journal & Analysis": "📈 Analysis",
+            "My Emotional Journey": "💖 Journey",
+            "Personalized Report": "📄 Report",
+            "Mini Quiz": "🎲 Mini Quiz",
+            "Crisis Support": "🆘 Crisis Support",
+            "Voice Call Demo": "📞 Voice Call Demo"
+        }
+        
+        for page_name, icon_text in pages.items():
+            if st.button(icon_text, key=f"nav_{page_name}"):
+                st.session_state["page"] = page_name
+                st.rerun()
+
+        st.markdown("---")
         sidebar_auth()
 
-    pages_map = {
+    page_functions = {
         "Home": homepage_panel,
         "Mood Tracker": mood_tracker_panel,
         "Wellness Check-in": wellness_check_in_panel,
         "AI Chat": ai_doc_chat_panel,
-        "Call Session": call_session_panel,
-        "AI Voice Chat": ai_doc_chat_panel,  # voice chat uses same panel above (simulated)
         "Mindful Breathing": mindful_breathing_panel,
         "Mindful Journaling": mindful_journaling_panel,
         "Journal & Analysis": journal_analysis_panel,
         "My Emotional Journey": emotional_journey_panel,
         "Personalized Report": personalized_report_panel,
+        "Mini Quiz": mini_quiz_panel,
         "Crisis Support": crisis_support_panel,
+        "Voice Call Demo": call_session_panel
     }
-
-    page_func = pages_map.get(st.session_state.get("page", "Home"))
-    if page_func:
-        page_func()
-
+    
+    func = page_functions.get(st.session_state.get("page"))
+    if func:
+        func()
+    
     st.markdown("---")
     st.markdown("Built with care • Data stored locally unless you log in and save to your account.")
 
