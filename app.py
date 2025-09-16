@@ -457,7 +457,7 @@ def call_session_panel():
         st.rerun()
 
     # Embedded HTML content for the voice chat
-    html_content = f"""
+    html_content = """
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -467,15 +467,15 @@ def call_session_panel():
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-            body {{
+            body {
                 font-family: 'Inter', sans-serif;
                 background: linear-gradient(135deg, #f0f4f8, #c3cfe2);
                 height: 100vh;
                 display: flex;
                 justify-content: center;
                 align-items: center;
-            }}
-            .chat-container {{
+            }
+            .chat-container {
                 width: 90%;
                 max-width: 600px;
                 height: 80vh;
@@ -485,58 +485,58 @@ def call_session_panel():
                 box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
                 background-color: #ffffff;
                 overflow: hidden;
-            }}
-            .chat-header {{
+            }
+            .chat-header {
                 background-color: #4a90e2;
                 color: white;
                 padding: 1.5rem;
                 text-align: center;
                 font-size: 1.5rem;
                 font-weight: 700;
-            }}
-            .chat-messages {{
+            }
+            .chat-messages {
                 flex-grow: 1;
                 padding: 1.5rem;
                 overflow-y: auto;
                 display: flex;
                 flex-direction: column;
                 gap: 1rem;
-            }}
-            .message {{
+            }
+            .message {
                 max-width: 80%;
                 padding: 0.75rem 1rem;
                 border-radius: 1rem;
                 line-height: 1.5;
                 box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-            }}
-            .user-message {{
+            }
+            .user-message {
                 background-color: #e2e8f0;
                 align-self: flex-end;
                 border-bottom-right-radius: 0.25rem;
-            }}
-            .ai-message {{
+            }
+            .ai-message {
                 background-color: #dbeafe;
                 align-self: flex-start;
                 border-bottom-left-radius: 0.25rem;
-            }}
-            .chat-input-area {{
+            }
+            .chat-input-area {
                 display: flex;
                 padding: 1rem;
                 background-color: #f7fafc;
                 border-top: 1px solid #e2e8f0;
-            }}
-            #text-input {{
+            }
+            #text-input {
                 flex-grow: 1;
                 border: 2px solid #e2e8f0;
                 border-radius: 1.5rem;
                 padding: 0.75rem 1.5rem;
                 transition: all 0.2s;
-            }}
-            #text-input:focus {{
+            }
+            #text-input:focus {
                 outline: none;
                 border-color: #4a90e2;
-            }}
-            #send-button, #voice-button {{
+            }
+            #send-button, #voice-button {
                 background-color: #4a90e2;
                 color: white;
                 padding: 0.75rem 1.5rem;
@@ -545,33 +545,33 @@ def call_session_panel():
                 cursor: pointer;
                 transition: background-color 0.2s;
                 margin-left: 0.5rem;
-            }}
-            #voice-button {{
+            }
+            #voice-button {
                 background-color: #4CAF50;
-            }}
-            #voice-button.recording {{
+            }
+            #voice-button.recording {
                 background-color: #f44336;
-            }}
-            .loading-dots {{
+            }
+            .loading-dots {
                 display: flex;
                 justify-content: center;
                 align-items: center;
                 height: 2rem;
-            }}
-            .loading-dot {{
+            }
+            .loading-dot {
                 width: 0.5rem;
                 height: 0.5rem;
                 background-color: #4a90e2;
                 border-radius: 50%;
                 margin: 0 0.25rem;
                 animation: bounce 1.4s infinite ease-in-out both;
-            }}
-            .loading-dot:nth-child(1) {{ animation-delay: -0.32s; }}
-            .loading-dot:nth-child(2) {{ animation-delay: -0.16s; }}
-            @keyframes bounce {{
-                0%, 80%, 100% {{ transform: scale(0); }}
-                40% {{ transform: scale(1); }}
-            }}
+            }
+            .loading-dot:nth-child(1) { animation-delay: -0.32s; }
+            .loading-dot:nth-child(2) { animation-delay: -0.16s; }
+            @keyframes bounce {
+                0%, 80%, 100% { transform: scale(0); }
+                40% { transform: scale(1); }
+            }
         </style>
     </head>
     <body class="bg-gray-100 font-sans">
@@ -599,20 +599,20 @@ def call_session_panel():
             let recognition = null;
             let isThinking = false;
 
-            function addMessageToUI(text, sender) {{
+            function addMessageToUI(text, sender) {
                 const messageElement = document.createElement('div');
                 messageElement.classList.add('message', sender === 'user' ? 'user-message' : 'ai-message');
                 messageElement.textContent = text;
                 chatMessages.appendChild(messageElement);
                 chatMessages.scrollTop = chatMessages.scrollHeight;
-            }}
+            }
 
-            function speakText(text) {{
+            function speakText(text) {
                 const utterance = new SpeechSynthesisUtterance(text);
                 window.speechSynthesis.speak(utterance);
-            }}
+            }
 
-            async function getAIResponse(userMessage) {{
+            async function getAIResponse(userMessage) {
                 if (isThinking) return;
                 isThinking = true;
                 addMessageToUI(userMessage, 'user');
@@ -624,83 +624,83 @@ def call_session_panel():
                 chatMessages.appendChild(loadingDots);
                 chatMessages.scrollTop = chatMessages.scrollHeight;
 
-                try {{
+                try {
                     // This is the key change: calling the Python backend instead of Gemini API directly
                     const streamlitHost = window.parent.location.origin;
-                    const response = await fetch(`${streamlitHost}/?user_message=${encodeURIComponent(userMessage)}`);
+                    const response = await fetch(streamlitHost + '/?user_message=' + encodeURIComponent(userMessage));
                     const result = await response.text();
                     
                     chatMessages.removeChild(loadingDots);
                     addMessageToUI(result, 'ai');
                     speakText(result);
-                }} catch (error) {{
+                } catch (error) {
                     console.error("Error fetching AI response from backend:", error);
                     chatMessages.removeChild(loadingDots);
                     const errorMessage = "I'm sorry, I'm having trouble connecting right now. Please try again later.";
                     addMessageToUI(errorMessage, 'ai');
                     speakText(errorMessage);
-                }} finally {{
+                } finally {
                     isThinking = false;
-                }}
-            }}
+                }
+            }
 
-            sendButton.addEventListener('click', () => {{
+            sendButton.addEventListener('click', () => {
                 const userMessage = textInput.value.trim();
-                if (userMessage) {{
+                if (userMessage) {
                     getAIResponse(userMessage);
-                }}
-            }});
+                }
+            });
 
-            voiceButton.addEventListener('click', () => {{
-                if (isRecording) {{
+            voiceButton.addEventListener('click', () => {
+                if (isRecording) {
                     recognition.stop();
-                }} else {{
-                    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {{
+                } else {
+                    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
                         recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
                         recognition.continuous = false;
                         recognition.interimResults = false;
                         recognition.lang = 'en-US';
 
-                        recognition.onstart = () => {{
+                        recognition.onstart = () => {
                             isRecording = true;
                             voiceButton.classList.add('recording');
                             voiceButton.textContent = '🔴';
                             textInput.placeholder = 'Listening...';
-                        }};
+                        };
 
-                        recognition.onresult = (event) => {{
+                        recognition.onresult = (event) => {
                             const transcript = event.results[0][0].transcript;
                             textInput.value = transcript;
                             getAIResponse(transcript);
-                        }};
+                        };
 
-                        recognition.onerror = (event) => {{
+                        recognition.onerror = (event) => {
                             console.error('Speech recognition error:', event.error);
                             textInput.placeholder = 'Error listening. Try again.';
                             isRecording = false;
                             voiceButton.classList.remove('recording');
                             voiceButton.textContent = '🎤';
-                        }};
+                        };
 
-                        recognition.onend = () => {{
+                        recognition.onend = () => {
                             isRecording = false;
                             voiceButton.classList.remove('recording');
                             voiceButton.textContent = '🎤';
                             textInput.placeholder = 'Type or speak your message...';
-                        }};
+                        };
 
                         recognition.start();
-                    }} else {{
+                    } else {
                         alert('Speech recognition is not supported in your browser.');
-                    }}
-                }}
-            }});
+                    }
+                }
+            });
             
-            textInput.addEventListener('keypress', (event) => {{
-                if (event.key === 'Enter') {{
+            textInput.addEventListener('keypress', (event) => {
+                if (event.key === 'Enter') {
                     sendButton.click();
-                }}
-            }});
+                }
+            });
 
         </script>
     </body>
@@ -975,7 +975,7 @@ def main():
     
     page_names = list(pages.keys())
     
-    # Initialize session state for the page if it doesn't exist
+    # Initialize session state for the page if it's not present
     if "page" not in st.session_state:
         st.session_state["page"] = "Home"
 
