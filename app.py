@@ -592,7 +592,6 @@ def journal_analysis_panel():
     if wc_fig:
         st.subheader("Word Cloud")
         st.pyplot(wc_fig, clear_figure=True)
-
 def wellness_check_in_panel():
     st.header("Wellness Check-in")
     st.markdown("This check-in is based on the **Patient Health Questionnaire (PHQ-9)**, a widely used tool for depression screening. It is a tool for self-reflection and **not a professional diagnosis**.")
@@ -619,8 +618,12 @@ def wellness_check_in_panel():
     }
     
     answers = {}
-    total_score = 0
     
+    # Check if a score has already been submitted and stored in session state
+    if "phq9_score" not in st.session_state:
+        st.session_state.phq9_score = None
+        st.session_state.phq9_interpretation = None
+
     with st.form("phq9_form"):
         for i, q in enumerate(phq_questions):
             response = st.radio(q, list(scores.keys()), key=f"phq9_q{i}")
@@ -629,32 +632,52 @@ def wellness_check_in_panel():
         submitted = st.form_submit_button("Get My Score")
 
     if submitted:
-        # Calculate the score after the form is submitted
-        total_score = sum(scores[answers[q]] for q in phq_questions) # <-- This line was corrected
+        total_score = sum(scores[answers[q]] for q in phq_questions)
         
-        st.subheader("Your Score")
-        st.markdown(f"**{total_score}** out of 27")
-        
-        # Interpret the score based on PHQ-9 guidelines
+        # Determine interpretation
+        interpretation = ""
         if total_score >= 20:
-            st.error("Severe: A high score suggests severe symptoms. It is strongly recommended that you speak to a professional.")
+            interpretation = "Severe: A high score suggests severe symptoms. It is strongly recommended that you speak to a professional."
         elif total_score >= 15:
-            st.warning("Moderately Severe: A high score suggests moderately severe symptoms. You should consider speaking with a professional.")
+            interpretation = "Moderately Severe: A high score suggests moderately severe symptoms. You should consider speaking with a professional."
         elif total_score >= 10:
-            st.info("Moderate: A moderate score suggests a need for support. Talking to a professional can be very helpful.")
+            interpretation = "Moderate: A moderate score suggests a need for support. Talking to a professional can be very helpful."
         elif total_score >= 5:
-            st.success("Mild: A mild score suggests some symptoms, and the app's features may be a great help for self-care.")
+            interpretation = "Mild: A mild score suggests some symptoms, and the app's features may be a great help for self-care."
         else:
-            st.success("Minimal to None: Your score suggests you're doing well. Keep up the self-care practices!")
+            interpretation = "Minimal to None: Your score suggests you're doing well. Keep up the self-care practices!"
+        
+        # Store results in session state
+        st.session_state.phq9_score = total_score
+        st.session_state.phq9_interpretation = interpretation
+
+        # Add a badge for completing the wellness check-in
+        if "Wellness Check-in Completed" not in st.session_state["streaks"]["badges"]:
+            st.session_state["streaks"]["badges"].append("Wellness Check-in Completed")
+
+    # Display the results if they exist in session state
+    if st.session_state.phq9_score is not None:
+        st.subheader("Your Score")
+        st.markdown(f"**{st.session_state.phq9_score}** out of 27")
+        
+        # Display the interpretation with appropriate color
+        if "Severe" in st.session_state.phq9_interpretation:
+            st.error(st.session_state.phq9_interpretation)
+        elif "Moderately Severe" in st.session_state.phq9_interpretation:
+            st.warning(st.session_state.phq9_interpretation)
+        elif "Moderate" in st.session_state.phq9_interpretation:
+            st.info(st.session_state.phq9_interpretation)
+        else:
+            st.success(st.session_state.phq9_interpretation)
             
         st.markdown("---")
         st.info("Remember, this is a screening tool, not a diagnosis. Please reach out to a professional for a full evaluation.")
         
-        # Add a badge for completing the wellness check-in
-        if "Wellness Check-in Completed" not in st.session_state["streaks"]["badges"]:
-            st.session_state["streaks"]["badges"].append("Wellness Check-in Completed")
-        
-        st.rerun()
+        # Button to reset the test
+        if st.button("Take the test again"):
+            st.session_state.phq9_score = None
+            st.session_state.phq9_interpretation = None
+            st.rerun()
 
 def emotional_journey_panel():
     st.header("My Emotional Journey")
