@@ -34,9 +34,16 @@ except Exception:
 
 # Audio libs
 try:
-    from audiorecorder import audiorecorder
-except Exception:
-    audiorecorder = None
+    from pydub import AudioSegment
+except ImportError:
+    st.warning("Pydub not installed. Some audio functionality may not work.")
+    AudioSegment = None
+
+try:
+    from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
+except ImportError:
+    st.warning("Streamlit-webrtc not installed. The call session panel will not work.")
+    webrtc_streamer = None
 
 # Local TTS (optional)
 try:
@@ -448,51 +455,59 @@ def ai_doc_chat_panel():
                 st.session_state["messages"].append({"role":"assistant","content":ai_resp,"ts":now_ts()})
         st.rerun()
 
+class AudioProcessor(AudioProcessorBase):
+    def __init__(self):
+        self.audio_container = []
+
+    def recv(self, frame):
+        self.audio_container.append(frame.to_ndarray())
+        return frame
+
 def call_session_panel():
     st.header("Call Session (Record & Reply)")
     st.markdown("Record a short message — the app will transcribe and reply.")
 
-    # Check if the audiorecorder component is available
-    if audiorecorder is None:
-        st.warning("Audio recording is not available. Please ensure 'streamlit-audiorecorder' is installed and your environment supports it.")
+    if webrtc_streamer:
+        ctx = webrtc_streamer(
+            key="audio-recorder",
+            mode="sendonly",
+            audio_processor_factory=AudioProcessor,
+            media_stream_constraints={"video": False, "audio": True},
+        )
+
+        if st.button("Stop Recording"):
+            if ctx and ctx.state.playing:
+                ctx.state.playing = False
+                st.success("Recording stopped.")
+                if ctx.audio_processor:
+                    audio_data = ctx.audio_processor.audio_container
+                    if audio_data:
+                        # This is a mock transcription as STT API is not available
+                        trans = "This is a placeholder transcription of the audio. You would replace this with a real STT when available."
+                        st.session_state["transcription_text"] = trans
+                        st.session_state["call_history"].append({"speaker":"User","text":trans,"timestamp":now_ts()})
+                        
+                        st.subheader("You said:")
+                        st.info(st.session_state["transcription_text"])
+                        
+                        if st.button("Get AI Reply"):
+                            st.session_state["messages"].append({"role":"user","content":st.session_state["transcription_text"],"ts":now_ts()})
+                            ai_resp = safe_generate(st.session_state["transcription_text"])
+                            st.session_state["call_history"].append({"speaker":"AI","text":ai_resp,"timestamp":now_ts()})
+                            
+                            st.subheader("AI Reply:")
+                            st.markdown(ai_resp)
+                            try:
+                                speak_text(ai_resp)
+                            except Exception:
+                                st.warning("TTS not available in this environment.")
+                            
+                            st.session_state["transcription_text"] = ""
+                            st.rerun()
+    else:
+        st.warning("Audio recording is not available. Please ensure 'streamlit-webrtc' is installed.")
         st.info("You can still use the regular AI Doc Chat to type your message.")
-        return
-
-    # The audiorecorder component returns a pydub object
-    audio = audiorecorder("Click to Record", "Recording...")
-    
-    if len(audio) > 0:
-        # Save the audio for processing
-        audio_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        audio.export(audio_file.name, format="wav")
-
-        st.audio(audio.export().read())
         
-        # This is a mock transcription, as the full Whisper API call is not available
-        # You would replace this with your actual transcription logic
-        trans = "This is a placeholder transcription of the audio. You would replace this with a real STT when available."
-        st.session_state["transcription_text"] = trans
-        st.session_state["call_history"].append({"speaker":"User","text":trans,"timestamp":now_ts()})
-        
-        st.subheader("You said:")
-        st.info(st.session_state["transcription_text"])
-        
-        # Display the AI reply button
-        if st.button("Get AI Reply"):
-            st.session_state["messages"].append({"role":"user","content":st.session_state["transcription_text"],"ts":now_ts()})
-            ai_resp = safe_generate(st.session_state["transcription_text"])
-            st.session_state["call_history"].append({"speaker":"AI","text":ai_resp,"timestamp":now_ts()})
-            
-            st.subheader("AI Reply:")
-            st.markdown(ai_resp)
-            try:
-                speak_text(ai_resp)
-            except Exception:
-                st.warning("TTS not available in this environment.")
-            
-            st.session_state["transcription_text"] = ""
-            st.rerun()
-
     if st.session_state["call_history"]:
         st.markdown("---")
         st.subheader("Call History")
@@ -503,6 +518,7 @@ def call_session_panel():
                     st.markdown(e.get("text",""))
             except Exception:
                 st.markdown(f"**{e.get('speaker')}:** {e.get('text')}")
+
 
 def mindful_breathing_panel():
     st.header("Mindful Breathing — 4-4-6 (Short)")
