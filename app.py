@@ -44,6 +44,7 @@ try:
 except ImportError:
     st.warning("Streamlit-webrtc not installed. The call session panel will not work.")
     webrtc_streamer = None
+    AudioProcessorBase = None # ADDED THIS LINE
 
 # Local TTS (optional)
 try:
@@ -455,19 +456,19 @@ def ai_doc_chat_panel():
                 st.session_state["messages"].append({"role":"assistant","content":ai_resp,"ts":now_ts()})
         st.rerun()
 
-class AudioProcessor(AudioProcessorBase):
-    def __init__(self):
-        self.audio_container = []
-
-    def recv(self, frame):
-        self.audio_container.append(frame.to_ndarray())
-        return frame
-
 def call_session_panel():
     st.header("Call Session (Record & Reply)")
     st.markdown("Record a short message — the app will transcribe and reply.")
 
-    if webrtc_streamer:
+    if webrtc_streamer and AudioProcessorBase: # CHECK ADDED HERE
+        class AudioProcessor(AudioProcessorBase):
+            def __init__(self):
+                self.audio_container = []
+
+            def recv(self, frame):
+                self.audio_container.append(frame.to_ndarray())
+                return frame
+        
         ctx = webrtc_streamer(
             key="audio-recorder",
             mode="sendonly",
