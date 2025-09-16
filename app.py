@@ -9,6 +9,7 @@ A full-featured Streamlit app for mental wellness, including:
 - Data persistence with Supabase (optional)
 - AI integration with Google Gemini (optional)
 - AI Text-to-Speech for voice chat (new)
+- New & improved UI/UX
 """
 
 import streamlit as st
@@ -57,41 +58,123 @@ st.set_page_config(page_title="AI Wellness Companion", page_icon="🧠", layout=
 if "page" not in st.session_state:
     st.session_state["page"] = "Home"
 
-# ---------- STYLES ----------
+# ---------- STYLES (UPDATED) ----------
 st.markdown(
     """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
-    .stApp { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); color: #2c3e50; font-family: 'Poppins', sans-serif; }
-    .main .block-container { padding: 2rem 4rem; }
-    .card { background-color: #eaf4ff; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 25px; margin-bottom: 25px; border-left: 5px solid #4a90e2; transition: transform .18s; }
-    .card:hover { transform: translateY(-5px); box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
-    .stButton>button { color: #fff; background-color: #4a90e2; border-radius: 8px; padding: 10px 22px; font-weight:600; border: none; }
-    .stButton>button:hover { background-color: #357bd9; }
-    .st-emotion-cache-1av55r7 {
-        border-radius: 20px;
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
-        background-color: #ffffff;
-        padding: 35px;
-        border: none;
+    
+    html, body, [class*="st-emotion-cache"] {
+        font-family: 'Poppins', sans-serif;
     }
-    .st-emotion-cache-16p649c {
-        border: none;
-        border-radius: 15px;
-        background-color: #f0f4f8;
+
+    .stApp { 
+        background-color: #f7f9fc;
+        color: #333333;
+    }
+    
+    .main .block-container { 
+        padding: 2rem 4rem; 
+    }
+    
+    .sidebar .st-emotion-cache-16p649c {
+        background-color: #e6eef7;
         padding: 20px;
-        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
-    }
-    .st-emotion-cache-12oz5g7 {
-        background-color: #eaf4ff;
         border-radius: 15px;
-        padding: 15px;
+        box-shadow: none;
+    }
+    
+    /* Custom Sidebar Nav */
+    .st-emotion-cache-1ky2q0h a {
+        display: flex;
+        align-items: center;
+        padding: 12px 18px;
+        margin: 5px 0;
+        border-radius: 10px;
+        color: #5a6268;
+        text-decoration: none;
+        transition: background-color 0.2s, transform 0.2s;
+    }
+
+    .st-emotion-cache-1ky2q0h a:hover {
+        background-color: #d8e5f2;
+        transform: translateX(5px);
+    }
+
+    .st-emotion-cache-1ky2q0h .st-emotion-cache-1v0tq4f {
+        font-weight: 600;
+        color: #333333;
+    }
+    
+    .st-emotion-cache-1ky2q0h .st-emotion-cache-1v0tq4f .st-emotion-cache-1w503s a {
+        background-color: #d8e5f2;
+        transform: translateX(5px);
+    }
+
+
+    /* Card Styling */
+    .card { 
+        background-color: #ffffff; 
+        border-radius: 15px; 
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08); 
+        padding: 30px; 
+        margin-bottom: 25px; 
+        border-left: 5px solid #6c757d; 
+        transition: transform .2s, box-shadow .2s; 
+    }
+    
+    .card:hover { 
+        transform: translateY(-5px) scale(1.01); 
+        box-shadow: 0 8px 20px rgba(0,0,0,0.15); 
+    }
+    
+    /* Button Styling */
+    .stButton>button { 
+        color: #fff; 
+        background-color: #6c757d; 
+        border-radius: 10px; 
+        padding: 12px 28px; 
+        font-weight:600; 
+        border: none; 
+        transition: background-color .2s, transform .2s;
+    }
+    
+    .stButton>button:hover { 
+        background-color: #5a6268;
+        transform: translateY(-2px);
+    }
+    
+    /* Streamlit block styling */
+    .st-emotion-cache-1av55r7 {
+        background-color: #f0f4f8;
+        border-radius: 20px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        padding: 40px;
+        border: none;
+    }
+    
+    .st-emotion-cache-12oz5g7 {
+        background-color: #e6eef7;
+        border-radius: 15px;
+        padding: 20px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-        border-left: 5px solid #4a90e2;
+        border-left: 5px solid #4a75a2;
     }
+    
     .st-emotion-cache-12oz5g7:hover {
-        background-color: #dbeaff;
+        background-color: #d8e5f2;
     }
+    
+    /* Headers */
+    h1, h2, h3, h4, h5, h6 {
+        color: #4a5568;
+        font-weight: 700;
+    }
+    
+    .st-emotion-cache-1cpx6e0 {
+        border-radius: 10px;
+    }
+    
     </style>
     """,
     unsafe_allow_html=True,
@@ -327,6 +410,39 @@ def sidebar_auth():
             st.sidebar.info("Logged out.")
             st.rerun()
 
+def navigation_link(text, icon, page_name):
+    style = """
+        <style>
+        .nav-link {
+            display: flex;
+            align-items: center;
+            padding: 12px 18px;
+            margin: 5px 0;
+            border-radius: 10px;
+            color: #5a6268;
+            text-decoration: none;
+            transition: background-color 0.2s, transform 0.2s;
+        }
+        .nav-link-active {
+            background-color: #d8e5f2;
+            transform: translateX(5px);
+            font-weight: 600;
+            color: #333333;
+        }
+        .nav-link:hover {
+            background-color: #d8e5f2;
+            transform: translateX(5px);
+        }
+        </style>
+    """
+    st.markdown(style, unsafe_allow_html=True)
+    
+    is_active = "nav-link-active" if st.session_state["page"] == page_name else ""
+    
+    if st.button(f"{icon} {text}", key=f"nav_{page_name}"):
+        st.session_state["page"] = page_name
+        st.rerun()
+
 # ---------- App panels ----------
 QUOTES = [
     "You are stronger than you think. 💪",
@@ -345,8 +461,9 @@ BADGE_RULES = [
 ]
 
 def homepage_panel():
-    st.title("Your Wellness Sanctuary")
+    st.title("Your Wellness Sanctuary ✨")
     st.markdown("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
+    
     col1, col2 = st.columns([2,1])
     with col1:
         st.header("Daily Inspiration")
@@ -354,36 +471,39 @@ def homepage_panel():
         st.markdown(f"**{random.choice(QUOTES)}**")
         st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("### Quick actions")
+        
         c1, c2, c3 = st.columns(3)
         with c1:
-            if st.button("Start Breathing"):
+            if st.button("Start Breathing 🌬️"):
                 st.session_state["page"] = "Mindful Breathing"
                 st.rerun()
         with c2:
-            if st.button("Talk to AI"):
+            if st.button("Talk to AI 🤖"):
                 st.session_state["page"] = "AI Chat"
                 st.rerun()
         with c3:
-            if st.button("Journal"):
+            if st.button("Journal ✍️"):
                 st.session_state["page"] = "Mindful Journaling"
                 st.rerun()
     with col2:
         st.image("https://images.unsplash.com/photo-1549490349-f06b3e942007?q=80&w=2070&auto=format&fit=crop", caption="Take a moment for yourself")
+    
     st.markdown("---")
+    
     st.header("Features")
     f1,f2,f3 = st.columns(3)
     with f1:
-        st.markdown("#### Mood Tracker")
+        st.markdown("#### Mood Tracker 📊")
         st.markdown("Log quick mood ratings and unlock badges.")
     with f2:
-        st.markdown("#### AI Chat")
+        st.markdown("#### AI Chat 💬")
         st.markdown("A compassionate AI to listen and suggest small exercises.")
     with f3:
-        st.markdown("#### Journal & Insights")
+        st.markdown("#### Journal & Insights 📈")
         st.markdown("Track progress over time with charts and word clouds.")
 
 def mood_tracker_panel():
-    st.header("Daily Mood Tracker")
+    st.header("Daily Mood Tracker 📊")
     col1, col2 = st.columns([3,1])
     with col1:
         mood = st.slider("How do you feel right now?", 1, 11, 6)
@@ -438,7 +558,7 @@ def mood_tracker_panel():
         st.plotly_chart(fig, use_container_width=True)
 
 def ai_chat_panel():
-    st.header("AI Chat")
+    st.header("AI Chat 💬")
     st.markdown("A compassionate AI buddy to listen.")
 
     if not st.session_state.chat_messages:
@@ -466,7 +586,7 @@ def ai_chat_panel():
         st.rerun()
 
 def ai_voice_chat_panel():
-    st.header("AI Voice Chat (Simulated)")
+    st.header("AI Voice Chat (Simulated) 🗣️")
     st.markdown("Type to the AI and listen to its spoken response. This simulates a conversation.")
 
     if not st.session_state.voice_chat_messages:
@@ -504,7 +624,7 @@ def ai_voice_chat_panel():
             st.rerun()
 
 def mindful_breathing_panel():
-    st.header("Mindful Breathing")
+    st.header("Mindful Breathing 🌬️")
     st.markdown("Follow the prompts: Inhale (4s) — Hold (4s) — Exhale (6s). Try 3 cycles.")
     
     if st.button("Start Exercise", key="start_breathing_btn"):
@@ -542,7 +662,7 @@ def mindful_breathing_panel():
             st.rerun()
             
 def mindful_journaling_panel():
-    st.header("Mindful Journaling")
+    st.header("Mindful Journaling ✍️")
     st.markdown("Write freely — your words are private here unless you save to your account.")
     journal_text = st.text_area("Today's reflection", height=220, key="journal_text")
     if st.button("Save Entry"):
@@ -563,7 +683,7 @@ def mindful_journaling_panel():
             st.warning("Write something you want to save.")
 
 def journal_analysis_panel():
-    st.header("Journal & Analysis")
+    st.header("Journal & Analysis 📈")
     all_text = get_all_user_text()
     if not all_text:
         st.info("No journal or chat text yet — start journaling or talking to get insights.")
@@ -586,7 +706,7 @@ def journal_analysis_panel():
         st.pyplot(wc_fig, clear_figure=True)
 
 def wellness_check_in_panel():
-    st.header("Wellness Check-in")
+    st.header("Wellness Check-in ✅")
     st.markdown("This check-in is based on the **Patient Health Questionnaire (PHQ-9)**, a widely used tool for depression screening. It is a tool for self-reflection and **not a professional diagnosis**.")
 
     st.markdown("### Over the past two weeks, how often have you been bothered by the following?")
@@ -668,7 +788,7 @@ def wellness_check_in_panel():
             st.rerun()
 
 def emotional_journey_panel():
-    st.header("My Emotional Journey")
+    st.header("My Emotional Journey 💖")
     all_text = get_all_user_text()
     if not all_text:
         st.info("Interact with the app more to build an emotional journey.")
@@ -691,7 +811,7 @@ Use empathetic tone and offer gentle encouragement. Data:
 
 
 def personalized_report_panel():
-    st.header("Personalized Report")
+    st.header("Personalized Report 📄")
     all_text = get_all_user_text()
     if not all_text:
         st.info("No data yet. Start journaling or chatting to generate a report.")
@@ -743,7 +863,7 @@ def personalized_report_panel():
             c.save()
 
 def crisis_support_panel():
-    st.header("Crisis Support")
+    st.header("Crisis Support 🆘")
     st.markdown("### National Crisis and Suicide Lifeline")
     st.markdown("If you or someone you know is in emotional distress or suicidal crisis, you can call or text the **988 Suicide & Crisis Lifeline**.")
     st.markdown("### [Call or Text 988](tel:988)")
@@ -755,10 +875,34 @@ def crisis_support_panel():
 
 
 def main():
-    st.sidebar.title("Navigation")
-    sidebar_auth()
+    with st.sidebar:
+        st.markdown("<h2 style='text-align: center;'>🧠 Wellness AI</h2>", unsafe_allow_html=True)
+        st.markdown("---")
+        
+        pages = {
+            "Home": "🏠 Home",
+            "Mood Tracker": "📊 Mood Tracker",
+            "Wellness Check-in": "✅ Check-in",
+            "AI Chat": "💬 AI Chat",
+            "AI Voice Chat": "🗣️ Voice Chat",
+            "Mindful Breathing": "🌬️ Breathing",
+            "Mindful Journaling": "✍️ Journaling",
+            "Journal & Analysis": "📈 Analysis",
+            "My Emotional Journey": "💖 Journey",
+            "Personalized Report": "📄 Report",
+            "Crisis Support": "🆘 Crisis Support"
+        }
+        
+        for page_name, icon_text in pages.items():
+            is_active = st.session_state.get("page") == page_name
+            if st.button(icon_text, key=f"nav_{page_name}"):
+                st.session_state["page"] = page_name
+                st.rerun()
+
+        st.markdown("---")
+        sidebar_auth()
     
-    pages = {
+    page_functions = {
         "Home": homepage_panel,
         "Mood Tracker": mood_tracker_panel,
         "Wellness Check-in": wellness_check_in_panel,
@@ -772,22 +916,7 @@ def main():
         "Crisis Support": crisis_support_panel
     }
     
-    page_names = list(pages.keys())
-    
-    # Initialize session state for the page if it's not present
-    if "page" not in st.session_state:
-        st.session_state["page"] = "Home"
-
-    try:
-        current_page_index = page_names.index(st.session_state.get("page"))
-    except ValueError:
-        current_page_index = 0
-        st.session_state["page"] = "Home"
-
-    page = st.sidebar.radio("Go to:", page_names, index=current_page_index)
-    st.session_state["page"] = page
-    
-    func = pages.get(st.session_state.get("page"))
+    func = page_functions.get(st.session_state.get("page"))
     if func:
         func()
     
