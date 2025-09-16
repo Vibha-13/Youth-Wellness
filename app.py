@@ -673,6 +673,13 @@ def wellness_check_in_panel():
         st.markdown("---")
         st.info("Remember, this is a screening tool, not a diagnosis. Please reach out to a professional for a full evaluation.")
         
+        # Display professional help options for scores 10 and above
+        if st.session_state.phq9_score >= 10:
+            st.subheader("Need Immediate Support?")
+            st.warning("**If you are in crisis, please call or text the National Crisis and Suicide Lifeline: 988**")
+            st.markdown("If you need to connect with a professional, we can help you find one.")
+            st.button("Find a Professional")
+        
         # Button to reset the test
         if st.button("Take the test again"):
             st.session_state.phq9_score = None
