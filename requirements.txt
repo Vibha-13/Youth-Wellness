@@ -11,4 +11,5 @@ Pillow
 pyttsx3 
 google-generativeai
 python-dotenv 
-supabase
+supabase 
+streamlit-audiorecorder

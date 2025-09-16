@@ -452,6 +452,12 @@ def call_session_panel():
     st.header("Call Session (Record & Reply)")
     st.markdown("Record a short message — the app will transcribe and reply.")
 
+    # Check if the audiorecorder component is available
+    if audiorecorder is None:
+        st.warning("Audio recording is not available. Please ensure 'streamlit-audiorecorder' is installed and your environment supports it.")
+        st.info("You can still use the regular AI Doc Chat to type your message.")
+        return
+
     # The audiorecorder component returns a pydub object
     audio = audiorecorder("Click to Record", "Recording...")
     
