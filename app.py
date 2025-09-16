@@ -8,6 +8,7 @@ A full-featured Streamlit app for mental wellness, including:
 - User Authentication
 - Data persistence with Supabase (optional)
 - AI integration with Google Gemini (optional)
+- AI Text-to-Speech for voice chat (new)
 """
 
 import streamlit as st
@@ -23,6 +24,9 @@ from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
 import matplotlib.pyplot as plt
+import requests
+import base64
+import wave
 
 # NLP & visuals
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -137,6 +141,10 @@ if "phq9_interpretation" not in st.session_state: st.session_state.phq9_interpre
 if "breathing_running" not in st.session_state: st.session_state.breathing_running = False
 if "breathing_cycle" not in st.session_state: st.session_state.breathing_cycle = 0
 
+# New state for voice chat
+if "voice_chat_messages" not in st.session_state: st.session_state.voice_chat_messages = []
+if "voice_chat_loading" not in st.session_state: st.session_state.voice_chat_loading = False
+
 analyzer = SentimentIntensityAnalyzer()
 
 # ---------- HELPERS ----------
@@ -184,6 +192,58 @@ def generate_wordcloud_figure(text: str):
     except Exception as e:
         st.warning(f"WordCloud failed: {e}")
         return None
+
+# --- NEW: TTS Helper ---
+def generate_audio_from_text(text, voice_name="Kore"):
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent"
+    
+    # Use the same API key
+    api_key = GEMINI_API_KEY
+    if not api_key:
+        st.error("No API key for TTS. Please add a GEMINI_API_KEY to secrets.")
+        return None
+
+    headers = {
+        'Content-Type': 'application/json'
+    }
+    payload = {
+        "contents": [{"parts": [{"text": text}]}],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": {
+                "voiceConfig": {
+                    "prebuiltVoiceConfig": {"voiceName": voice_name}
+                }
+            }
+        }
+    }
+
+    try:
+        response = requests.post(f"{url}?key={api_key}", headers=headers, json=payload)
+        response.raise_for_status()
+        data = response.json()
+        audio_data_base64 = data.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('inlineData', {}).get('data')
+        
+        if audio_data_base64:
+            audio_data_bytes = base64.b64decode(audio_data_base64)
+            return audio_data_bytes
+        else:
+            st.error("TTS API did not return audio data.")
+            return None
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error calling TTS API: {e}")
+        return None
+
+def pcm_to_wav(pcm_data: bytes, sample_rate: int = 16000) -> bytes:
+    """Converts raw PCM audio data to a WAV file format."""
+    with io.BytesIO() as buffer:
+        with wave.open(buffer, 'wb') as wav_file:
+            wav_file.setnchannels(1)  # Mono
+            wav_file.setsampwidth(2)  # 16-bit
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(pcm_data)
+        return buffer.getvalue()
+
 
 # ---------- Supabase helpers (guarded) ----------
 def register_user_db(email: str):
@@ -405,6 +465,44 @@ def ai_chat_panel():
                 st.session_state.chat_messages.append({"role": "assistant", "content": ai_response})
         st.rerun()
 
+def ai_voice_chat_panel():
+    st.header("AI Voice Chat (Simulated)")
+    st.markdown("Type to the AI and listen to its spoken response. This simulates a conversation.")
+
+    if not st.session_state.voice_chat_messages:
+        st.session_state.voice_chat_messages = [{"role": "assistant", "content": "Hello, I'm ready to talk. What would you like to discuss?", "audio": None}]
+
+    for message in st.session_state.voice_chat_messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if message.get("audio"):
+                st.audio(message["audio"], format='audio/wav')
+
+    if prompt := st.chat_input("What's on your mind?"):
+        st.session_state.voice_chat_messages.append({"role": "user", "content": prompt, "audio": None})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        with st.chat_message("assistant"):
+            st.session_state.voice_chat_loading = True
+            with st.spinner("Thinking and generating voice..."):
+                # 1. Get text response from Gemini Pro
+                try:
+                    response = model.generate_content(prompt)
+                    ai_response_text = response.text
+                except Exception as e:
+                    ai_response_text = "I'm sorry, I'm having trouble with my text model right now."
+            
+                st.markdown(ai_response_text)
+                
+                # 2. Get audio from TTS API
+                audio_pcm_data = generate_audio_from_text(ai_response_text)
+                audio_wav_data = pcm_to_wav(audio_pcm_data) if audio_pcm_data else None
+            
+            st.session_state.voice_chat_messages.append({"role": "assistant", "content": ai_response_text, "audio": audio_wav_data})
+            st.session_state.voice_chat_loading = False
+            st.rerun()
+
 def mindful_breathing_panel():
     st.header("Mindful Breathing")
     st.markdown("Follow the prompts: Inhale (4s) — Hold (4s) — Exhale (6s). Try 3 cycles.")
@@ -584,13 +682,13 @@ Use empathetic tone and offer gentle encouragement. Data:
     if ai_available:
         try:
             story = model.generate_content(prompt).text
-            st.markdown(story)
-            return
         except Exception:
-            st.warning("AI generation failed. This might be a temporary issue with the service. A fallback narrative is being displayed.")
+            story = "AI generation failed. This might be a temporary issue with the service. A fallback narrative is being displayed."
+    else:
+        story = "You’ve been carrying a lot — and showing up to this app is a small brave step. Over time, small acts of care add up. Keep logging your moments and celebrate tiny wins."
     
-    fallback_story = "You’ve been carrying a lot — and showing up to this app is a small brave step. Over time, small acts of care add up. Keep logging your moments and celebrate tiny wins."
-    st.markdown(fallback_story)
+    st.markdown(story)
+
 
 def personalized_report_panel():
     st.header("Personalized Report")
@@ -665,7 +763,7 @@ def main():
         "Mood Tracker": mood_tracker_panel,
         "Wellness Check-in": wellness_check_in_panel,
         "AI Chat": ai_chat_panel,
-        "AI Voice Chat": ai_chat_panel, # Directs to the same chat panel
+        "AI Voice Chat": ai_voice_chat_panel,
         "Mindful Breathing": mindful_breathing_panel,
         "Mindful Journaling": mindful_journaling_panel,
         "Journal & Analysis": journal_analysis_panel,
