@@ -595,39 +595,62 @@ def journal_analysis_panel():
 
 def wellness_check_in_panel():
     st.header("Wellness Check-in")
-    st.markdown("Answer these two questions to get a quick snapshot of your mood. This is a screening tool, **not a professional diagnosis**.")
+    st.markdown("This check-in is based on the **Patient Health Questionnaire (PHQ-9)**, a widely used tool for depression screening. It is a tool for self-reflection and **not a professional diagnosis**.")
 
     st.markdown("### Over the past two weeks, how often have you been bothered by the following?")
     
-    questions = {
-        "Little interest or pleasure in doing things?": ["Not at all", "Several days", "More than half the days", "Nearly every day"],
-        "Feeling down, depressed, or hopeless?": ["Not at all", "Several days", "More than half the days", "Nearly every day"]
-    }
-    scores = {option: i for i, option in enumerate(["Not at all", "Several days", "More than half the days", "Nearly every day"])}
-
-    answers = {}
-    for i, (q, options) in enumerate(questions.items()):
-        answers[q] = st.radio(q, options, key=f"phq2_q{i}")
+    phq_questions = [
+        "1. Little interest or pleasure in doing things?",
+        "2. Feeling down, depressed, or hopeless?",
+        "3. Trouble falling or staying asleep, or sleeping too much?",
+        "4. Feeling tired or having little energy?",
+        "5. Poor appetite or overeating?",
+        "6. Feeling bad about yourself - or that you are a failure or have let yourself or your family down?",
+        "7. Trouble concentrating on things, such as reading the newspaper or watching television?",
+        "8. Moving or speaking so slowly that other people could have noticed? Or the opposite - being so fidgety or restless that you have been moving around a lot more than usual?",
+        "9. Thoughts that you would be better off dead, or of hurting yourself in some way?"
+    ]
     
-    if st.button("Get My Result"):
-        total_score = sum(scores[answers[q]] for q in questions)
+    scores = {
+        "Not at all": 0,
+        "Several days": 1,
+        "More than half the days": 2,
+        "Nearly every day": 3
+    }
+    
+    answers = {}
+    total_score = 0
+    
+    with st.form("phq9_form"):
+        for i, q in enumerate(phq_questions):
+            response = st.radio(q, list(scores.keys()), key=f"phq9_q{i}")
+            answers[q] = response
+            total_score += scores[response]
         
-        st.subheader("Your Score")
-        st.markdown(f"**{total_score}** out of 6")
-        
-        if total_score >= 3:
-            st.warning("Based on your responses, it may be helpful to talk to a mental health professional.")
-            st.markdown("This is a simplified screening, not a diagnosis. Please consider seeking a full evaluation from a professional to get a complete picture of your health.")
-            
-            if "Needs Support" not in st.session_state["streaks"]["badges"]:
-                st.session_state["streaks"]["badges"].append("Needs Support")
+        submitted = st.form_submit_button("Get My Score")
 
+    if submitted:
+        st.subheader("Your Score")
+        st.markdown(f"**{total_score}** out of 27")
+        
+        # Interpret the score based on PHQ-9 guidelines
+        if total_score >= 20:
+            st.error("Severe: A high score suggests severe symptoms. It is strongly recommended that you speak to a professional.")
+        elif total_score >= 15:
+            st.warning("Moderately Severe: A high score suggests moderately severe symptoms. You should consider speaking with a professional.")
+        elif total_score >= 10:
+            st.info("Moderate: A moderate score suggests a need for support. Talking to a professional can be very helpful.")
+        elif total_score >= 5:
+            st.success("Mild: A mild score suggests some symptoms, and the app's features may be a great help for self-care.")
         else:
-            st.success("Your score indicates you're doing well. Keep up the self-care!")
-            st.markdown("This is a good sign, but remember to continue checking in with yourself. Small actions can have a big impact on your well-being.")
+            st.success("Minimal to None: Your score suggests you're doing well. Keep up the self-care practices!")
             
-            if "Wellness Achiever" not in st.session_state["streaks"]["badges"]:
-                st.session_state["streaks"]["badges"].append("Wellness Achiever")
+        st.markdown("---")
+        st.info("Remember, this is a screening tool, not a diagnosis. Please reach out to a professional for a full evaluation.")
+        
+        # Add a badge for completing the wellness check-in
+        if "Wellness Check-in Completed" not in st.session_state["streaks"]["badges"]:
+            st.session_state["streaks"]["badges"].append("Wellness Check-in Completed")
         
         st.rerun()
 
