@@ -678,7 +678,7 @@ def wellness_check_in_panel():
             st.subheader("Need Immediate Support?")
             st.warning("**If you are in crisis, please call or text the National Crisis and Suicide Lifeline: 988**")
             st.markdown("If you need to connect with a professional, we can help you find one.")
-            st.button("Find a Professional")
+            st.markdown("### [Find a Professional near me](https://www.google.com/search?q=find+a+mental+health+professional)")
         
         # Button to reset the test
         if st.button("Take the test again"):
