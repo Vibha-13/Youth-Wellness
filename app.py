@@ -630,7 +630,7 @@ def wellness_check_in_panel():
 
     if submitted:
         # Calculate the score after the form is submitted
-        total_score = sum(scores[answers[q]] for q in questions)
+        total_score = sum(scores[answers[q]] for q in phq_questions) # <-- This line was corrected
         
         st.subheader("Your Score")
         st.markdown(f"**{total_score}** out of 27")
