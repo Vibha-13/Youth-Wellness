@@ -32,7 +32,7 @@ try:
 except Exception:
     genai = None
 
-# Audio libs
+# Audio libs (not used, but kept for context)
 AudioSegment = None
 webrtc_streamer = None
 AudioProcessorBase = None
@@ -433,10 +433,280 @@ def ai_doc_chat_panel():
                 st.session_state["messages"].append({"role":"assistant","content":ai_resp,"ts":now_ts()})
         st.rerun()
 
+@st.experimental_fragment
+def ai_response_fragment(user_message):
+    st.session_state["messages"].append({"role":"user","content":user_message,"ts":now_ts()})
+    prompt_context = "\n\n".join([m["content"] for m in st.session_state["messages"][-6:]])
+    ai_resp = safe_generate(prompt_context)
+    st.session_state["messages"].append({"role":"assistant","content":ai_resp,"ts":now_ts()})
+    return ai_resp
+
 def call_session_panel():
-    st.header("Call Session (Record & Reply)")
-    st.markdown("Audio recording is not available due to environment limitations. Please use the AI Doc Chat instead.")
-    st.info("You can still use the regular AI Doc Chat to type your message.")
+    st.header("AI Voice Chat (New!)")
+    st.markdown("Experience a conversational AI companion.")
+    
+    # Check if a message was sent from the JavaScript frontend
+    if "user_message" in st.query_params:
+        user_message = st.query_params["user_message"]
+        st.session_state.call_history.append({"speaker": "User", "text": user_message, "timestamp": now_ts()})
+        ai_response = ai_response_fragment(user_message)
+        st.session_state.call_history.append({"speaker": "AI", "text": ai_response, "timestamp": now_ts()})
+        # Clear the query params after processing to prevent a loop
+        del st.query_params["user_message"]
+        # Immediately rerun to show the updated chat history
+        st.rerun()
+
+    # Embedded HTML content for the voice chat
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Voice Chat</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+            body {{
+                font-family: 'Inter', sans-serif;
+                background: linear-gradient(135deg, #f0f4f8, #c3cfe2);
+                height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }}
+            .chat-container {{
+                width: 90%;
+                max-width: 600px;
+                height: 80vh;
+                display: flex;
+                flex-direction: column;
+                border-radius: 1.5rem;
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+                background-color: #ffffff;
+                overflow: hidden;
+            }}
+            .chat-header {{
+                background-color: #4a90e2;
+                color: white;
+                padding: 1.5rem;
+                text-align: center;
+                font-size: 1.5rem;
+                font-weight: 700;
+            }}
+            .chat-messages {{
+                flex-grow: 1;
+                padding: 1.5rem;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+            }}
+            .message {{
+                max-width: 80%;
+                padding: 0.75rem 1rem;
+                border-radius: 1rem;
+                line-height: 1.5;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+            }}
+            .user-message {{
+                background-color: #e2e8f0;
+                align-self: flex-end;
+                border-bottom-right-radius: 0.25rem;
+            }}
+            .ai-message {{
+                background-color: #dbeafe;
+                align-self: flex-start;
+                border-bottom-left-radius: 0.25rem;
+            }}
+            .chat-input-area {{
+                display: flex;
+                padding: 1rem;
+                background-color: #f7fafc;
+                border-top: 1px solid #e2e8f0;
+            }}
+            #text-input {{
+                flex-grow: 1;
+                border: 2px solid #e2e8f0;
+                border-radius: 1.5rem;
+                padding: 0.75rem 1.5rem;
+                transition: all 0.2s;
+            }}
+            #text-input:focus {{
+                outline: none;
+                border-color: #4a90e2;
+            }}
+            #send-button, #voice-button {{
+                background-color: #4a90e2;
+                color: white;
+                padding: 0.75rem 1.5rem;
+                border-radius: 1.5rem;
+                border: none;
+                cursor: pointer;
+                transition: background-color 0.2s;
+                margin-left: 0.5rem;
+            }}
+            #voice-button {{
+                background-color: #4CAF50;
+            }}
+            #voice-button.recording {{
+                background-color: #f44336;
+            }}
+            .loading-dots {{
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 2rem;
+            }}
+            .loading-dot {{
+                width: 0.5rem;
+                height: 0.5rem;
+                background-color: #4a90e2;
+                border-radius: 50%;
+                margin: 0 0.25rem;
+                animation: bounce 1.4s infinite ease-in-out both;
+            }}
+            .loading-dot:nth-child(1) {{ animation-delay: -0.32s; }}
+            .loading-dot:nth-child(2) {{ animation-delay: -0.16s; }}
+            @keyframes bounce {{
+                0%, 80%, 100% {{ transform: scale(0); }}
+                40% {{ transform: scale(1); }}
+            }}
+        </style>
+    </head>
+    <body class="bg-gray-100 font-sans">
+        <div class="chat-container">
+            <div class="chat-header">AI Wellness Companion</div>
+            <div id="chat-messages" class="chat-messages">
+                <div class="message ai-message">
+                    Hello, I'm here to listen. What's on your mind?
+                </div>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="text-input" placeholder="Type your message..." />
+                <button id="send-button">Send</button>
+                <button id="voice-button" title="Start/Stop Voice Input">🎤</button>
+            </div>
+        </div>
+
+        <script>
+            const chatMessages = document.getElementById('chat-messages');
+            const textInput = document.getElementById('text-input');
+            const sendButton = document.getElementById('send-button');
+            const voiceButton = document.getElementById('voice-button');
+
+            let isRecording = false;
+            let recognition = null;
+            let isThinking = false;
+
+            function addMessageToUI(text, sender) {{
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('message', sender === 'user' ? 'user-message' : 'ai-message');
+                messageElement.textContent = text;
+                chatMessages.appendChild(messageElement);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }}
+
+            function speakText(text) {{
+                const utterance = new SpeechSynthesisUtterance(text);
+                window.speechSynthesis.speak(utterance);
+            }}
+
+            async function getAIResponse(userMessage) {{
+                if (isThinking) return;
+                isThinking = true;
+                addMessageToUI(userMessage, 'user');
+                textInput.value = '';
+                
+                const loadingDots = document.createElement('div');
+                loadingDots.classList.add('loading-dots');
+                loadingDots.innerHTML = `<div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div>`;
+                chatMessages.appendChild(loadingDots);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                try {{
+                    // This is the key change: calling the Python backend instead of Gemini API directly
+                    const streamlitHost = window.parent.location.origin;
+                    const response = await fetch(`${streamlitHost}/?user_message=${encodeURIComponent(userMessage)}`);
+                    const result = await response.text();
+                    
+                    chatMessages.removeChild(loadingDots);
+                    addMessageToUI(result, 'ai');
+                    speakText(result);
+                }} catch (error) {{
+                    console.error("Error fetching AI response from backend:", error);
+                    chatMessages.removeChild(loadingDots);
+                    const errorMessage = "I'm sorry, I'm having trouble connecting right now. Please try again later.";
+                    addMessageToUI(errorMessage, 'ai');
+                    speakText(errorMessage);
+                }} finally {{
+                    isThinking = false;
+                }}
+            }}
+
+            sendButton.addEventListener('click', () => {{
+                const userMessage = textInput.value.trim();
+                if (userMessage) {{
+                    getAIResponse(userMessage);
+                }}
+            }});
+
+            voiceButton.addEventListener('click', () => {{
+                if (isRecording) {{
+                    recognition.stop();
+                }} else {{
+                    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {{
+                        recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                        recognition.continuous = false;
+                        recognition.interimResults = false;
+                        recognition.lang = 'en-US';
+
+                        recognition.onstart = () => {{
+                            isRecording = true;
+                            voiceButton.classList.add('recording');
+                            voiceButton.textContent = '🔴';
+                            textInput.placeholder = 'Listening...';
+                        }};
+
+                        recognition.onresult = (event) => {{
+                            const transcript = event.results[0][0].transcript;
+                            textInput.value = transcript;
+                            getAIResponse(transcript);
+                        }};
+
+                        recognition.onerror = (event) => {{
+                            console.error('Speech recognition error:', event.error);
+                            textInput.placeholder = 'Error listening. Try again.';
+                            isRecording = false;
+                            voiceButton.classList.remove('recording');
+                            voiceButton.textContent = '🎤';
+                        }};
+
+                        recognition.onend = () => {{
+                            isRecording = false;
+                            voiceButton.classList.remove('recording');
+                            voiceButton.textContent = '🎤';
+                            textInput.placeholder = 'Type or speak your message...';
+                        }};
+
+                        recognition.start();
+                    }} else {{
+                        alert('Speech recognition is not supported in your browser.');
+                    }}
+                }}
+            }});
+            
+            textInput.addEventListener('keypress', (event) => {{
+                if (event.key === 'Enter') {{
+                    sendButton.click();
+                }}
+            }});
+
+        </script>
+    </body>
+    </html>
+    """
+    st.components.v1.html(html_content, height=600)
 
 def mindful_breathing_panel():
     st.header("Mindful Breathing — 4-4-6 (Short)")
@@ -473,7 +743,7 @@ def mindful_breathing_panel():
             st.balloons()
             st.rerun()
         st.session_state.breath_running = False
-        st.success("Nice job — that was mindful breathing!")
+        st.success("Nice job — that was mindful breathing.")
 
 def mindful_journaling_panel():
     st.header("Mindful Journaling")
@@ -660,9 +930,6 @@ def personalized_report_panel():
     else:
         summary = "Based on your recent entries, you’re showing resilience and self-awareness. Keep going!"
 
-    st.subheader("AI Summary")
-    st.markdown(summary)
-
     if st.button("Export as PDF"):
         if pdf_canvas:
             buffer = io.BytesIO()
@@ -697,7 +964,7 @@ def main():
         "Mood Tracker": mood_tracker_panel,
         "Wellness Check-in": wellness_check_in_panel,
         "AI Doc Chat": ai_doc_chat_panel,
-        "Call Session": call_session_panel,
+        "AI Voice Chat": call_session_panel,
         "Mindful Breathing": mindful_breathing_panel,
         "Mindful Journaling": mindful_journaling_panel,
         "Journal & Analysis": journal_analysis_panel,
