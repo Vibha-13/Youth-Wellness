@@ -1,15 +1,10 @@
 streamlit
 python-dotenv
-sounddevice
-wavio
 vaderSentiment
 plotly
 matplotlib
 pandas
 wordcloud
 Pillow
-pyttsx3
 google-generativeai
-pydub
 supabase
-streamlit-webrtc

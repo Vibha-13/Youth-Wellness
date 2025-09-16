@@ -33,24 +33,10 @@ except Exception:
     genai = None
 
 # Audio libs
-try:
-    from pydub import AudioSegment
-except ImportError:
-    st.warning("Pydub not installed. Some audio functionality may not work.")
-    AudioSegment = None
-
-try:
-    from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
-except ImportError:
-    st.warning("Streamlit-webrtc not installed. The call session panel will not work.")
-    webrtc_streamer = None
-    AudioProcessorBase = None # ADDED THIS LINE
-
-# Local TTS (optional)
-try:
-    import pyttsx3
-except Exception:
-    pyttsx3 = None
+AudioSegment = None
+webrtc_streamer = None
+AudioProcessorBase = None
+pyttsx3 = None
 
 # Supabase (optional)
 try:
@@ -245,15 +231,6 @@ def speak_text(text: str):
     if not text: return
     if browser_tts(text):
         return
-    if pyttsx3:
-        try:
-            engine = pyttsx3.init()
-            engine.setProperty("rate", 150)
-            engine.say(text)
-            engine.runAndWait()
-            return
-        except Exception:
-            st.warning("Local TTS failed.")
 
 # ---------- Supabase helpers (guarded) ----------
 def register_user_db(email: str):
@@ -458,68 +435,8 @@ def ai_doc_chat_panel():
 
 def call_session_panel():
     st.header("Call Session (Record & Reply)")
-    st.markdown("Record a short message — the app will transcribe and reply.")
-
-    if webrtc_streamer and AudioProcessorBase: # CHECK ADDED HERE
-        class AudioProcessor(AudioProcessorBase):
-            def __init__(self):
-                self.audio_container = []
-
-            def recv(self, frame):
-                self.audio_container.append(frame.to_ndarray())
-                return frame
-        
-        ctx = webrtc_streamer(
-            key="audio-recorder",
-            mode="sendonly",
-            audio_processor_factory=AudioProcessor,
-            media_stream_constraints={"video": False, "audio": True},
-        )
-
-        if st.button("Stop Recording"):
-            if ctx and ctx.state.playing:
-                ctx.state.playing = False
-                st.success("Recording stopped.")
-                if ctx.audio_processor:
-                    audio_data = ctx.audio_processor.audio_container
-                    if audio_data:
-                        # This is a mock transcription as STT API is not available
-                        trans = "This is a placeholder transcription of the audio. You would replace this with a real STT when available."
-                        st.session_state["transcription_text"] = trans
-                        st.session_state["call_history"].append({"speaker":"User","text":trans,"timestamp":now_ts()})
-                        
-                        st.subheader("You said:")
-                        st.info(st.session_state["transcription_text"])
-                        
-                        if st.button("Get AI Reply"):
-                            st.session_state["messages"].append({"role":"user","content":st.session_state["transcription_text"],"ts":now_ts()})
-                            ai_resp = safe_generate(st.session_state["transcription_text"])
-                            st.session_state["call_history"].append({"speaker":"AI","text":ai_resp,"timestamp":now_ts()})
-                            
-                            st.subheader("AI Reply:")
-                            st.markdown(ai_resp)
-                            try:
-                                speak_text(ai_resp)
-                            except Exception:
-                                st.warning("TTS not available in this environment.")
-                            
-                            st.session_state["transcription_text"] = ""
-                            st.rerun()
-    else:
-        st.warning("Audio recording is not available. Please ensure 'streamlit-webrtc' is installed.")
-        st.info("You can still use the regular AI Doc Chat to type your message.")
-        
-    if st.session_state["call_history"]:
-        st.markdown("---")
-        st.subheader("Call History")
-        for e in st.session_state["call_history"][-10:]:
-            who = "user" if e["speaker"] == "User" else "assistant"
-            try:
-                with st.chat_message(who):
-                    st.markdown(e.get("text",""))
-            except Exception:
-                st.markdown(f"**{e.get('speaker')}:** {e.get('text')}")
-
+    st.markdown("Audio recording is not available due to environment limitations. Please use the AI Doc Chat instead.")
+    st.info("You can still use the regular AI Doc Chat to type your message.")
 
 def mindful_breathing_panel():
     st.header("Mindful Breathing — 4-4-6 (Short)")
