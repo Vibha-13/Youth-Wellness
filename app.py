@@ -65,8 +65,12 @@ try:
 except Exception:
     pdf_canvas = None
 
-# ---------- CONFIG ----------
+# ---------- CONFIG & SETUP ----------
 st.set_page_config(page_title="AI Wellness Companion", page_icon="🧠", layout="wide")
+
+# Set up session state for navigation
+if "page" not in st.session_state:
+    st.session_state["page"] = "Home"
 
 # ---------- STYLES ----------
 st.markdown(
@@ -161,7 +165,7 @@ QUOTES = [
     "Progress, not perfection. Tiny steps add up."
 ]
 
-MOOD_EMOJI_MAP = {1:"😭",2:"😢",3:"😔",4:"😕",5:"😐",6:"🙂",7:"😊",8:"😄",9:"🤩",10:"🥳"}
+MOOD_EMOJI_MAP = {1:"😭",2:"😢",3:"😔",4:"😕",5:"😐",6:"🙂",7:"😊",8:"😄",9:"🤩",10:"🥳", 11: "✨"}
 BADGE_RULES = [
     ("Getting Started", lambda s: len(s["mood_history"]) >= 1),
     ("Weekly Streak: 3", lambda s: s.get("streaks", {}).get("mood_log", 0) >= 3),
@@ -349,7 +353,7 @@ def sidebar_auth():
             st.sidebar.info("Logged out.")
             st.rerun()
 
-# ---------- App pages ----------
+# ---------- App panels ----------
 def homepage_panel():
     st.title("Your Wellness Sanctuary")
     st.markdown("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
@@ -363,15 +367,15 @@ def homepage_panel():
         c1, c2, c3 = st.columns(3)
         with c1:
             if st.button("Start Breathing"):
-                st.session_state["page"] = "breathing"
+                st.session_state["page"] = "Mindful Breathing"
                 st.rerun()
         with c2:
             if st.button("Talk to AI"):
-                st.session_state["page"] = "chat"
+                st.session_state["page"] = "AI Doc Chat"
                 st.rerun()
         with c3:
             if st.button("Journal"):
-                st.session_state["page"] = "journaling"
+                st.session_state["page"] = "Mindful Journaling"
                 st.rerun()
     with col2:
         st.image("https://images.unsplash.com/photo-1549490349-f06b3e942007?q=80&w=2070&auto=format&fit=crop", caption="Take a moment for yourself")
@@ -392,8 +396,8 @@ def mood_tracker_panel():
     st.header("Daily Mood Tracker")
     col1, col2 = st.columns([3,1])
     with col1:
-        mood = st.slider("How do you feel right now?", 1, 10, 6)
-        st.markdown(f"**You chose:** {MOOD_EMOJI_MAP[mood]} · {mood}/10")
+        mood = st.slider("How do you feel right now?", 1, 11, 6)
+        st.markdown(f"**You chose:** {MOOD_EMOJI_MAP[mood]} · {mood}/11")
         note = st.text_input("Optional: Add a short note about why you feel this way")
         if st.button("Log Mood"):
             entry = {"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "mood": mood, "note": note}
@@ -589,37 +593,42 @@ def journal_analysis_panel():
         st.subheader("Word Cloud")
         st.pyplot(wc_fig, clear_figure=True)
 
-def mini_quiz_panel():
-    st.header("Mood Booster — Quick Quiz")
-    st.markdown("Try this 3-question quiz. It’s a fun mood booster — not a medical test.")
-    questions = [
-        {"q":"Pick a color you like:", "a":["Blue","Green","Purple","Yellow"]},
-        {"q":"Pick a coping micro-tool:", "a":["Deep breath","Short walk","Music","Call a friend"]},
-        {"q":"Choose a calming sound:", "a":["Rain","Ocean","Wind chimes","Silence"]}
-    ]
-    answers = []
-    for i, item in enumerate(questions):
-        ans = st.radio(item["q"], item["a"], key=f"q{i}")
-        answers.append(ans)
+def wellness_check_in_panel():
+    st.header("Wellness Check-in")
+    st.markdown("Answer these two questions to get a quick snapshot of your mood. This is a screening tool, **not a professional diagnosis**.")
+
+    st.markdown("### Over the past two weeks, how often have you been bothered by the following?")
     
-    if st.button("Get Suggestion"):
-        st.subheader("Suggestion:")
-        if ai_available:
-            try:
-                prompt = f"""
-                Based on these choices, provide a short, single-paragraph, supportive wellness suggestion.
-                User choices: {', '.join(answers)}.
-                """
-                suggestion = model.generate_content(prompt).text
-                st.info(suggestion)
-            except Exception:
-                st.warning("AI generation failed. A simple suggestion is provided instead.")
-                st.info("Taking a moment for yourself can make a big difference. Try a quick break or listen to some calming music.")
-        else:
-            st.info("Taking a moment for yourself can make a big difference. Try a quick break or listen to some calming music.")
+    questions = {
+        "Little interest or pleasure in doing things?": ["Not at all", "Several days", "More than half the days", "Nearly every day"],
+        "Feeling down, depressed, or hopeless?": ["Not at all", "Several days", "More than half the days", "Nearly every day"]
+    }
+    scores = {option: i for i, option in enumerate(["Not at all", "Several days", "More than half the days", "Nearly every day"])}
+
+    answers = {}
+    for i, (q, options) in enumerate(questions.items()):
+        answers[q] = st.radio(q, options, key=f"phq2_q{i}")
+    
+    if st.button("Get My Result"):
+        total_score = sum(scores[answers[q]] for q in questions)
+        
+        st.subheader("Your Score")
+        st.markdown(f"**{total_score}** out of 6")
+        
+        if total_score >= 3:
+            st.warning("Based on your responses, it may be helpful to talk to a mental health professional.")
+            st.markdown("This is a simplified screening, not a diagnosis. Please consider seeking a full evaluation from a professional to get a complete picture of your health.")
             
-        if "Mood Booster" not in st.session_state["streaks"]["badges"]:
-            st.session_state["streaks"]["badges"].append("Mood Booster")
+            if "Needs Support" not in st.session_state["streaks"]["badges"]:
+                st.session_state["streaks"]["badges"].append("Needs Support")
+
+        else:
+            st.success("Your score indicates you're doing well. Keep up the self-care!")
+            st.markdown("This is a good sign, but remember to continue checking in with yourself. Small actions can have a big impact on your well-being.")
+            
+            if "Wellness Achiever" not in st.session_state["streaks"]["badges"]:
+                st.session_state["streaks"]["badges"].append("Wellness Achiever")
+        
         st.rerun()
 
 def emotional_journey_panel():
@@ -723,23 +732,32 @@ def crisis_support_panel():
 def main():
     st.sidebar.title("Navigation")
     sidebar_auth()
+    
     pages = {
         "Home": homepage_panel,
         "Mood Tracker": mood_tracker_panel,
+        "Wellness Check-in": wellness_check_in_panel, # NEW QUIZ SECTION
         "AI Doc Chat": ai_doc_chat_panel,
         "Call Session": call_session_panel,
         "Mindful Breathing": mindful_breathing_panel,
         "Mindful Journaling": mindful_journaling_panel,
         "Journal & Analysis": journal_analysis_panel,
-        "Mini Quiz": mini_quiz_panel,
         "My Emotional Journey": emotional_journey_panel,
         "Personalized Report": personalized_report_panel,
         "Crisis Support": crisis_support_panel
     }
-    page = st.sidebar.radio("Go to:", list(pages.keys()), index=0)
+    
+    # Use session state to manage which page is shown
+    page_names = list(pages.keys())
+    current_page_index = page_names.index(st.session_state.get("page", "Home"))
+    
+    page = st.sidebar.radio("Go to:", page_names, index=current_page_index, key="sidebar_nav")
+    st.session_state["page"] = page
+    
     func = pages.get(page)
     if func:
         func()
+    
     st.markdown("---")
     st.markdown("Built with care • Data stored locally unless you log in and save to your account.")
 
