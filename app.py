@@ -32,15 +32,11 @@ try:
 except Exception:
     genai = None
 
-# Audio libs (optional)
+# Audio libs
 try:
-    import sounddevice as sd
+    from audiorecorder import audiorecorder
 except Exception:
-    sd = None
-try:
-    import wavio
-except Exception:
-    wavio = None
+    audiorecorder = None
 
 # Local TTS (optional)
 try:
@@ -153,6 +149,8 @@ if "transcription_text" not in st.session_state: st.session_state["transcription
 if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
 if "user_id" not in st.session_state: st.session_state["user_id"] = None
 if "user_email" not in st.session_state: st.session_state["user_email"] = None
+if "phq9_score" not in st.session_state: st.session_state.phq9_score = None
+if "phq9_interpretation" not in st.session_state: st.session_state.phq9_interpretation = None
 
 analyzer = SentimentIntensityAnalyzer()
 
@@ -217,28 +215,6 @@ def generate_wordcloud_figure(text: str):
         return fig
     except Exception as e:
         st.warning(f"WordCloud failed: {e}")
-        return None
-
-def record_audio(duration=5, fs=44100):
-    if sd is None:
-        st.warning("Recording not available in this environment.")
-        return None
-    st.info("Recording... speak now.")
-    audio_data = sd.rec(int(duration * fs), samplerate=fs, channels=1, blocking=True, dtype='int16')
-    st.success("Recording complete.")
-    if wavio:
-        try:
-            tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-            wavio.write(tmp.name, audio_data, fs, sampwidth=2)
-            tmp.close()
-            with open(tmp.name, "rb") as f:
-                b = io.BytesIO(f.read())
-            return b
-        except Exception as e:
-            st.warning(f"Could not write WAV: {e}")
-            return None
-    else:
-        st.warning("wavio not installed — returning None for audio file.")
         return None
 
 def browser_tts(text: str) -> bool:
@@ -474,34 +450,43 @@ def ai_doc_chat_panel():
 
 def call_session_panel():
     st.header("Call Session (Record & Reply)")
-    st.markdown("Record a short message — the app will transcribe (demo) and reply.")
-    col1, col2 = st.columns(2)
-    with col1:
-        duration = st.slider("Recording duration (seconds)", 3, 20, 8)
-        if sd is None:
-            st.info("Recording disabled on this environment.")
-        if st.button("Start Recording"):
-            audio = record_audio(duration=duration)
-            if audio:
-                trans = "This is a short transcription placeholder. You can replace this with a real STT when available."
-                st.session_state["transcription_text"] = trans
-                st.session_state["call_history"].append({"speaker":"User","text":trans,"timestamp":now_ts()})
-                st.rerun()
-    if st.session_state.get("transcription_text"):
+    st.markdown("Record a short message — the app will transcribe and reply.")
+
+    # The audiorecorder component returns a pydub object
+    audio = audiorecorder("Click to Record", "Recording...")
+    
+    if len(audio) > 0:
+        # Save the audio for processing
+        audio_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        audio.export(audio_file.name, format="wav")
+
+        st.audio(audio.export().read())
+        
+        # This is a mock transcription, as the full Whisper API call is not available
+        # You would replace this with your actual transcription logic
+        trans = "This is a placeholder transcription of the audio. You would replace this with a real STT when available."
+        st.session_state["transcription_text"] = trans
+        st.session_state["call_history"].append({"speaker":"User","text":trans,"timestamp":now_ts()})
+        
         st.subheader("You said:")
         st.info(st.session_state["transcription_text"])
+        
+        # Display the AI reply button
         if st.button("Get AI Reply"):
             st.session_state["messages"].append({"role":"user","content":st.session_state["transcription_text"],"ts":now_ts()})
             ai_resp = safe_generate(st.session_state["transcription_text"])
             st.session_state["call_history"].append({"speaker":"AI","text":ai_resp,"timestamp":now_ts()})
+            
             st.subheader("AI Reply:")
             st.markdown(ai_resp)
             try:
                 speak_text(ai_resp)
             except Exception:
                 st.warning("TTS not available in this environment.")
+            
             st.session_state["transcription_text"] = ""
             st.rerun()
+
     if st.session_state["call_history"]:
         st.markdown("---")
         st.subheader("Call History")
@@ -545,9 +530,9 @@ def mindful_breathing_panel():
                     time.sleep(1)
                 placeholder.empty()
             st.session_state.breath_cycle = c+1
+            st.balloons()
             st.rerun()
         st.session_state.breath_running = False
-        st.balloons()
         st.success("Nice job — that was mindful breathing!")
 
 def mindful_journaling_panel():
@@ -619,11 +604,6 @@ def wellness_check_in_panel():
     
     answers = {}
     
-    # Check if a score has already been submitted and stored in session state
-    if "phq9_score" not in st.session_state:
-        st.session_state.phq9_score = None
-        st.session_state.phq9_interpretation = None
-
     with st.form("phq9_form"):
         for i, q in enumerate(phq_questions):
             response = st.radio(q, list(scores.keys()), key=f"phq9_q{i}")
@@ -634,7 +614,6 @@ def wellness_check_in_panel():
     if submitted:
         total_score = sum(scores[answers[q]] for q in phq_questions)
         
-        # Determine interpretation
         interpretation = ""
         if total_score >= 20:
             interpretation = "Severe: A high score suggests severe symptoms. It is strongly recommended that you speak to a professional."
@@ -647,20 +626,16 @@ def wellness_check_in_panel():
         else:
             interpretation = "Minimal to None: Your score suggests you're doing well. Keep up the self-care practices!"
         
-        # Store results in session state
         st.session_state.phq9_score = total_score
         st.session_state.phq9_interpretation = interpretation
 
-        # Add a badge for completing the wellness check-in
         if "Wellness Check-in Completed" not in st.session_state["streaks"]["badges"]:
             st.session_state["streaks"]["badges"].append("Wellness Check-in Completed")
 
-    # Display the results if they exist in session state
     if st.session_state.phq9_score is not None:
         st.subheader("Your Score")
         st.markdown(f"**{st.session_state.phq9_score}** out of 27")
         
-        # Display the interpretation with appropriate color
         if "Severe" in st.session_state.phq9_interpretation:
             st.error(st.session_state.phq9_interpretation)
         elif "Moderately Severe" in st.session_state.phq9_interpretation:
@@ -673,14 +648,12 @@ def wellness_check_in_panel():
         st.markdown("---")
         st.info("Remember, this is a screening tool, not a diagnosis. Please reach out to a professional for a full evaluation.")
         
-        # Display professional help options for scores 10 and above
         if st.session_state.phq9_score >= 10:
             st.subheader("Need Immediate Support?")
             st.warning("**If you are in crisis, please call or text the National Crisis and Suicide Lifeline: 988**")
             st.markdown("If you need to connect with a professional, we can help you find one.")
             st.markdown("### [Find a Professional near me](https://www.google.com/search?q=find+a+mental+health+professional)")
         
-        # Button to reset the test
         if st.button("Take the test again"):
             st.session_state.phq9_score = None
             st.session_state.phq9_interpretation = None
@@ -698,14 +671,12 @@ Write a short, supportive, and strength-focused 3-paragraph narrative about a pe
 Use empathetic tone and offer gentle encouragement. Data:
 {all_text[:4000]}
 """
-    # Attempt to generate the narrative using the AI model
     if ai_available:
         try:
             story = model.generate_content(prompt).text
             st.markdown(story)
             return
         except Exception:
-            # If the AI call fails for any reason, display a more descriptive warning and a fallback message
             st.warning("AI generation failed. This might be a temporary issue with the service. A fallback narrative is being displayed.")
     
     fallback_story = "You’ve been carrying a lot — and showing up to this app is a small brave step. Over time, small acts of care add up. Keep logging your moments and celebrate tiny wins."
@@ -764,26 +735,19 @@ def personalized_report_panel():
             c.drawText(text_obj)
             c.showPage()
             c.save()
-            buffer.seek(0)
-            st.download_button(
-                "Download Report",
-                buffer,
-                file_name="wellness_report.pdf",
-                mime="application/pdf",
-            )
-        else:
-            st.warning("PDF export not available in this environment.")
 
 def crisis_support_panel():
-    st.header("Crisis Support — Immediate Resources")
-    st.markdown("If you are in immediate danger or suicidal, please contact local emergency services now.")
-    st.markdown("**Helplines (US examples)**: 988 (US Suicide & Crisis Lifeline). Replace with local hotlines if outside US.")
-    st.markdown("**Grounding exercise (5-4-3-2-1)** — try naming: 5 things you see, 4 you can touch, 3 you can hear, 2 you can smell, 1 you can taste.")
-    if st.button("Quick grounding"):
-        st.info("Look around and name 5 things you see right now.")
-        time.sleep(0.5)
+    st.header("Crisis Support")
+    st.markdown("### National Crisis and Suicide Lifeline")
+    st.markdown("If you or someone you know is in emotional distress or suicidal crisis, you can call or text the **988 Suicide & Crisis Lifeline**.")
+    st.markdown("### [Call or Text 988](tel:988)")
+    st.markdown("### Other Resources")
+    st.markdown("- **Crisis Text Line:** Text HOME to 741741 from anywhere in the US, anytime, about any type of crisis.")
+    st.markdown("- **The Trevor Project:** Call 1-866-488-7386 or text START to 678-678. (For LGBTQ youth)")
+    st.markdown("---")
+    st.info("Remember, these services are free, confidential, and available 24/7.")
 
-# ---------- NAVIGATION ----------
+
 def main():
     st.sidebar.title("Navigation")
     sidebar_auth()
@@ -808,18 +772,15 @@ def main():
     if "page" not in st.session_state:
         st.session_state["page"] = "Home"
 
-    # Use a try-except block to gracefully handle the case where a key might not exist
     try:
         current_page_index = page_names.index(st.session_state.get("page"))
     except ValueError:
         current_page_index = 0
         st.session_state["page"] = "Home"
 
-    # Use the sidebar radio to update the page in session state
     page = st.sidebar.radio("Go to:", page_names, index=current_page_index)
     st.session_state["page"] = page
     
-    # Render the selected page
     func = pages.get(st.session_state.get("page"))
     if func:
         func()
