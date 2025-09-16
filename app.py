@@ -433,6 +433,15 @@ def sidebar_auth():
 
 
 # ---------- APP PAGES (features preserved + improved styling) ----------
+# ---------- CONTENT ----------
+QUOTES = [
+    "You are stronger than you think. 💪",
+    "Even small steps count. 🌱",
+    "Breathe. You are doing your best. 🌬️",
+    "This moment will pass. 💛",
+    "Progress, not perfection. Tiny steps add up. ✨"
+]
+
 def homepage_panel():
     st.title("Your Wellness Sanctuary ✨")
     st.markdown("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
