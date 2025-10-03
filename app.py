@@ -13,7 +13,13 @@ import numpy as np
 # Lightweight sentiment analyzer cached
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
+# Import the OpenAI library (used for OpenRouter compatibility)
+from openai import OpenAI
+from openai import APIError
+
 # ---------- CONSTANTS ----------
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_MODEL_NAME = "openai/gpt-3.5-turbo" # You can change this to any OpenRouter model
 QUOTES = [
     "You are the only one who can limit your greatness. — Unknown",
     "I have chosen to be happy because it is good for my health. — Voltaire",
@@ -45,20 +51,22 @@ st.set_page_config(page_title="AI Wellness Companion", page_icon="🧠", layout=
 def setup_analyzer():
     return SentimentIntensityAnalyzer()
 
-# Lazy AI setup — defer heavy import until called
+# Lazy AI setup for OpenRouter
 @st.cache_resource(show_spinner=False)
 def setup_ai_model(api_key: str):
-    """Lazy configure google.generativeai if available and key provided.
-       Returns (model_obj or None, boolean ai_available, chat_session or None)
+    """Lazy configure OpenAI client for OpenRouter.
+       Returns (client_obj or None, boolean ai_available, chat_messages_history or None)
     """
     if not api_key:
         return None, False, None
     try:
-        # local import to avoid slowing module load
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
+        # **OPENROUTER API CONFIGURATION USING OPENAI CLIENT**
+        client = OpenAI(
+            api_key=api_key,
+            base_url=OPENROUTER_BASE_URL
+        )
         
-        # **UPDATED SYSTEM INSTRUCTION FOR EMPATHETIC TONE**
+        # **SYSTEM INSTRUCTION FOR EMPATHETIC TONE**
         system_instruction = """
 You are 'The Youth Wellness Buddy,' an AI designed for teens. 
 Your primary goal is to provide non-judgmental, empathetic, and encouraging support. 
@@ -71,36 +79,22 @@ Rules for response style:
 4. If they change the subject, address the new topic, but gently check if they want to return to the previous one.
 """
         
-        model = genai.GenerativeModel(
-            "gemini-2.5-flash",
-            system_instruction=system_instruction
-        )
-        
-        # Prepare history for chat initialization
-        history_for_init = []
-        if st.session_state["chat_messages"]:
-            import google.generativeai.types as genai_types
+        # Prepare initial history with system instruction
+        history = [{"role": "system", "content": system_instruction}]
+
+        # Append existing chat history (if any)
+        if "chat_messages" in st.session_state:
+            # Only append user/assistant roles from state, ignoring potential 'system' role duplication
             for msg in st.session_state["chat_messages"]:
-                role_map = msg.get("role")
-                if role_map == "assistant":
-                    role_map = "model"
-                
-                content_text = msg.get("content")
-                if content_text:
-                    history_for_init.append(
-                        genai_types.Content(
-                            parts=[genai_types.Part.from_text(content_text)], 
-                            role=role_map
-                        )
-                    )
-
-        chat_session = model.start_chat(history=history_for_init)
+                if msg["role"] in ["user", "assistant"]:
+                     history.append(msg)
         
-        # Sync initial welcome message if history is empty
-        if not st.session_state["chat_messages"] or st.session_state["chat_messages"][0]["role"] != "assistant":
-             st.session_state["chat_messages"] = [{"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"}]
+        # Sync initial welcome message if history is empty or only contains system instruction
+        if len(history) <= 1:
+             history.append({"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"})
 
-        return model, True, chat_session
+        # Return client instance, availability flag, and the fully constructed history
+        return client, True, history
     except Exception as e:
         # print(f"AI Setup failed: {e}") # for debugging
         return None, False, None
@@ -123,11 +117,13 @@ if "page" not in st.session_state:
 
 # Initialize AI/DB models in state for the first time
 if "_ai_model" not in st.session_state:
-    GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
-    _ai_model_tuple, _ai_available, _chat_session_obj = setup_ai_model(GEMINI_API_KEY)
-    st.session_state["_ai_model"] = _ai_model_tuple
+    # **API Key now looks for OPENROUTER_API_KEY**
+    OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+    _ai_client_obj, _ai_available, _chat_history_list = setup_ai_model(OPENROUTER_API_KEY)
+    st.session_state["_ai_model"] = _ai_client_obj 
     st.session_state["_ai_available"] = _ai_available
-    st.session_state["chat_session"] = _chat_session_obj
+    # st.session_state["chat_session"] is now the initial list of messages/history
+    st.session_state["chat_messages"] = _chat_history_list if _ai_available else [{"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"}]
     
 if "_supabase_client_obj" not in st.session_state:
     SUPABASE_URL = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
@@ -135,7 +131,6 @@ if "_supabase_client_obj" not in st.session_state:
     _supabase_client_obj, _db_connected = setup_supabase_client(SUPABASE_URL, SUPABASE_KEY)
     st.session_state["_supabase_client_obj"] = _supabase_client_obj
     st.session_state["_db_connected"] = _db_connected
-
 
 if "daily_journal" not in st.session_state:
     st.session_state["daily_journal"] = []
@@ -178,11 +173,7 @@ def clean_text_for_ai(text: str) -> str:
 
 def safe_generate(prompt: str, max_tokens: int = 300):
     """
-    Generate text via Gemini, using a pre-configured chat session and 
-    incorporating the custom, empathetic response logic for key phrases.
-    
-    NOTE: The chat session must be initialized/updated externally (in the panel)
-          to ensure the history is correct.
+    Generate text via OpenRouter, using the system message and current history.
     """
     
     # **CUSTOM, EMPATHETIC RESPONSE LOGIC**
@@ -198,27 +189,52 @@ def safe_generate(prompt: str, max_tokens: int = 300):
     elif "funny" in prompt_lower or "joke" in prompt_lower or "break" in prompt_lower:
         # Check for previous message to maintain context
         previous_topic = "our chat"
-        # Since the current prompt is the last message in st.session_state.chat_messages, 
-        # we look at the message before it for context.
-        if len(st.session_state.chat_messages) > 1 and st.session_state.chat_messages[-2]["role"] == "user":
-            previous_prompt = st.session_state.chat_messages[-2]["content"]
+        # Since the current prompt is the last user message, we look at the message before it for context.
+        # We need to filter for the last *user* message before the *current* user prompt.
+        user_messages = [m for m in st.session_state.chat_messages if m["role"] == "user"]
+        if len(user_messages) > 1:
+            previous_prompt = user_messages[-2]["content"]
             previous_topic = f"what you were sharing about '{previous_prompt[:25]}...'"
 
         return (
             "I hear you! It sounds like you need a quick reset, and a little humor is a great way to do that. **Okay, here's a silly one that always makes me smile:** Why don't scientists trust atoms? **Because they make up everything!** 😂 I hope that got a small chuckle! **Ready to dive back into** " + previous_topic + ", **or should I keep the jokes coming for a few more minutes?**"
         )
     
-    # --- For all other inputs, rely on the detailed AI System Instruction ---
+    # --- For all other inputs, rely on the AI System Instruction ---
     
-    if st.session_state.get("_ai_available") and st.session_state.get("chat_session"):
-        chat_session = st.session_state["chat_session"]
+    if st.session_state.get("_ai_available") and st.session_state.get("_ai_model"):
+        client = st.session_state["_ai_model"]
+        
+        # Get the current history including the system message and the new user message (already appended in the UI code)
+        messages_for_api = st.session_state.chat_messages
+        
         prompt_clean = clean_text_for_ai(prompt)
+
+        # Ensure the last message in history is the cleaned user prompt
+        if messages_for_api[-1]["content"] != prompt_clean:
+             # This should not happen if the chat panel logic is correct, but is a safe guard.
+             messages_for_api.append({"role": "user", "content": prompt_clean})
+
         try:
-            # Note: We use the existing chat session here
-            resp = chat_session.send_message(prompt_clean, max_output_tokens=max_tokens)
-            return getattr(resp, "text", None) or str(resp)
+            # Use the OpenAI client chat completion endpoint
+            resp = client.chat.completions.create(
+                model=OPENROUTER_MODEL_NAME,
+                messages=messages_for_api,
+                max_tokens=max_tokens,
+                temperature=0.7 # Add temperature for conversational tone
+            )
+            
+            # Extract the AI's response text
+            if resp.choices and resp.choices[0].message:
+                return resp.choices[0].message.content
+            
+        except APIError as e:
+            # Handle API errors (e.g., key expiry, rate limits, model issues)
+            # print(f"OpenRouter API Error: {e}") 
+            st.error("OpenRouter API Error. Please check your key or try a different model.")
+            pass
         except Exception:
-            # Fallback to canned replies on API/model failure
+            # Fallback to canned replies on general failure
             pass
             
     canned = [
@@ -238,7 +254,7 @@ def get_all_user_text() -> str:
     parts = []
     # Journal entries
     parts += [e.get("text","") for e in st.session_state["daily_journal"] if e.get("text")]
-    # User chat messages
+    # User chat messages (skip system and assistant messages)
     parts += [m.get("content","") for m in st.session_state["chat_messages"] if m.get("role") == "user" and m.get("content")]
     return " ".join(parts).strip()
 
@@ -322,7 +338,7 @@ st.markdown(
 )
 
 # Sidebar Navigation (placed here to allow functions to be defined below)
-st.sidebar.markdown(f"- AI Status: **{'Connected' if st.session_state.get('_ai_available') else 'Local (fallback)'}**")
+st.sidebar.markdown(f"- AI Status: **{'Connected (OpenRouter)' if st.session_state.get('_ai_available') else 'Local (fallback)'}**")
 st.sidebar.markdown(f"- DB Status: **{'Connected' if st.session_state.get('_db_connected') else 'Not connected'}**")
 
 st.sidebar.header("Navigation")
@@ -389,9 +405,15 @@ def sidebar_auth():
             for key in ["logged_in", "user_id", "user_email", "phq9_score", "phq9_interpretation"]:
                 st.session_state[key] = None
             st.session_state["daily_journal"] = [] # Clear local journal
-            st.session_state.chat_messages = [{"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"}]
-            # Clear chat session instance to force re-init
-            st.session_state["chat_session"] = None
+            st.session_state.chat_messages = []
+            
+            # Re-initialize the AI client and chat session after logout
+            OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+            _ai_client_obj, _ai_available, _chat_history_list = setup_ai_model(OPENROUTER_API_KEY)
+            st.session_state["_ai_model"] = _ai_client_obj
+            st.session_state["_ai_available"] = _ai_available
+            st.session_state["chat_messages"] = _chat_history_list if _ai_available else [{"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"}]
+
             st.sidebar.info("Logged out.")
             st.rerun() # FIXED
 
@@ -502,42 +524,32 @@ def ai_chat_panel():
     st.header("AI Chat 💬")
     st.markdown("A compassionate AI buddy to listen. All your messages help the AI understand you better.")
 
-    model = st.session_state.get("_ai_model")
-
+    # Display chat messages (excluding the system instruction)
     for message in st.session_state.chat_messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+        if message["role"] in ["user", "assistant"]:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
     prompt = st.chat_input("What's on your mind?")
     if prompt:
-        # 1. Add user message to display (BEFORE calling AI)
+        # 1. Add user message to display and history
         st.session_state.chat_messages.append({"role": "user", "content": prompt})
+        
+        # Display user message
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
             with st.spinner("Listening closely..."):
-                # 2. Call safe_generate
+                # 2. Call safe_generate with the full prompt
                 ai_response = safe_generate(prompt)
                 
                 st.markdown(ai_response)
                 
-                # 3. Add AI response to display history
+                # 3. Add AI response to history
+                # Check if the response came from the custom logic (it won't be in the model's history)
+                # If it didn't come from the model (i.e., it was a canned response), we still append it to the chat history for display
                 st.session_state.chat_messages.append({"role": "assistant", "content": ai_response})
-                
-                # 4. Update the actual chat session instance with the new response
-                # This ensures the model's internal history is accurate for the next turn.
-                if st.session_state.get("chat_session"):
-                    try:
-                        import google.generativeai.types as genai_types
-                        st.session_state["chat_session"].history.append(
-                            genai_types.Content(
-                                parts=[genai_types.Part.from_text(ai_response)], 
-                                role="model"
-                            )
-                        )
-                    except Exception:
-                        pass # Ignore if history update fails, fallback is safe_generate logic
                         
         # Use st.rerun() to force Streamlit to clear the input and display new messages
         st.rerun() # FIXED
@@ -680,6 +692,7 @@ def journal_analysis_panel():
         entries.append({"date": pd.to_datetime(e["date"]), "compound": e.get("sentiment", 0), "source": "Journal"})
     # User chat entries (approximate time as 'now' for simplicity)
     for msg in st.session_state.chat_messages:
+        # Exclude system/assistant roles
         if msg["role"] == "user":
              entries.append({"date": datetime.now(), "compound": sentiment_compound(msg["content"]), "source": "Chat"})
 
@@ -714,105 +727,139 @@ def wellness_check_in_panel():
         "5. Poor appetite or overeating?",
         "6. Feeling bad about yourself - or that you are a failure or have let yourself or your family down?",
         "7. Trouble concentrating on things, such as reading the newspaper or watching television?",
-        "8. Moving or speaking so slowly that other people could have noticed? Or the opposite - being so fidgety or restless that you have been moving around a lot more than usual?",
-        "9. Thoughts that you would be better off dead, or of hurting yourself in some way?"
+        "8. Moving or speaking so slowly that other people could have noticed, or the opposite - being so fidgety or restless that you have been moving around a lot more than usual?",
+        "9. Thoughts that you would be better off dead or of hurting yourself in some way?"
     ]
-
-    scores = {
-        "Not at all": 0,
-        "Several days": 1,
-        "More than half the days": 2,
-        "Nearly every day": 3
-    }
-    score_labels = list(scores.keys())
-
-    with st.form("phq9_form"):
-        answers = {}
-        for i, q in enumerate(phq_questions):
-            # Use index for key to avoid issues with question text changes
-            response = st.radio(q, score_labels, key=f"phq9_q{i}", index=0) 
-            answers[q] = response
-        submitted = st.form_submit_button("Get My Score")
-
-    if submitted:
-        total_score = sum(scores[answers[q]] for q in phq_questions)
-        interpretation = ""
+    
+    options = ["Not at all (0)", "Several days (1)", "More than half the days (2)", "Nearly every day (3)"]
+    
+    answers = {}
+    st.markdown("Over the last **2 weeks**, how often have you been bothered by any of the following problems?")
+    for i, q in enumerate(phq_questions):
+        answers[i] = st.radio(q, options, key=f"phq9_q{i}", index=0)
         
-        # Interpretation ranges based on PHQ-9 guidelines
-        if total_score >= 20:
-            interpretation = "Severe: A high score suggests severe symptoms. It is **strongly recommended you seek professional help immediately**."
-        elif total_score >= 15:
-            interpretation = "Moderately Severe: This score suggests moderately severe symptoms. Talking to a counselor or doctor is advisable."
-        elif total_score >= 10:
-            interpretation = "Moderate: This score suggests moderate symptoms. Consider reaching out to a support system or professional."
-        elif total_score >= 5:
-            interpretation = "Mild: This score suggests mild symptoms. Practicing self-care and checking in with friends can be helpful."
-        else:
-            interpretation = "Minimal: This score suggests minimal symptoms. Keep up your positive habits!"
+    if st.button("Calculate Score", key="calculate_phq9_btn"):
+        score = 0
+        for i in range(len(phq_questions)):
+            # Extract the score from the option string (the number in parenthesis)
+            score += int(re.search(r"\((\d)\)", answers[i]).group(1))
 
-        st.session_state["phq9_score"] = total_score
+        # Interpretation
+        if score <= 4:
+            interpretation = "Minimal depression (Score 0-4)"
+        elif score <= 9:
+            interpretation = "Mild depression (Score 5-9)"
+        elif score <= 14:
+            interpretation = "Moderate depression (Score 10-14)"
+        elif score <= 19:
+            interpretation = "Moderately severe depression (Score 15-19)"
+        else:
+            interpretation = "Severe depression (Score 20-27)"
+
+        st.session_state["phq9_score"] = score
         st.session_state["phq9_interpretation"] = interpretation
-        
-        st.subheader(f"Your PHQ-9 Score: {total_score}/27")
-        if total_score >= 10:
-            st.warning(interpretation)
-        else:
-            st.success(interpretation)
-        
-        # Suggest Crisis Support if score is high
-        if total_score >= 20:
-            st.markdown("### Crisis Support Needed")
-            st.error("If you feel unsafe or are in crisis, please visit the **Crisis Support** panel immediately for resources.")
-        
         st.rerun()
 
-def personalized_report_panel():
-    st.header("Personalized Wellness Summary 📄")
+    if st.session_state["phq9_score"] is not None:
+        st.markdown("---")
+        st.subheader("Your Check-in Results")
+        st.markdown(f"**Total Score:** **{st.session_state['phq9_score']}**")
+        st.markdown(f"**Interpretation:** **{st.session_state['phq9_interpretation']}**")
+        st.warning("Remember, this is a screening tool. If you are struggling, please reach out to a parent, teacher, doctor, or a crisis line immediately.")
+
+
+def report_summary_panel():
+    st.header("Report & Summary 📄")
     
-    st.subheader("Your Progress at a Glance")
-    c1, c2, c3 = st.columns(3)
+    st.subheader("Overall Wellness Snapshot")
     
-    with c1:
-        st.metric(label="Total Mood Logs", value=len(st.session_state["mood_history"]))
-    with c2:
-        st.metric(label="Journal Entries", value=len(st.session_state["daily_journal"]))
-    with c3:
-        st.metric(label="Current Streak 🔥", value=st.session_state['streaks'].get('mood_log',0))
+    col1, col2, col3 = st.columns(3)
+    
+    # 1. Total Entries
+    total_entries = len(st.session_state.daily_journal)
+    col1.metric("Journal Entries", total_entries)
+    
+    # 2. Mood Streak
+    mood_streak = st.session_state["streaks"].get("mood_log", 0)
+    col2.metric("Mood Streak", f"{mood_streak} days")
+    
+    # 3. PHQ-9 Score
+    phq9_score = st.session_state["phq9_score"]
+    phq9_display = f"{phq9_score} / 27" if phq9_score is not None else "N/A"
+    col3.metric("Last Check-in Score", phq9_display)
+    
+    st.markdown("---")
+
+    # Mood History Analysis
+    if st.session_state["mood_history"]:
+        df_mood = pd.DataFrame(st.session_state["mood_history"])
+        avg_mood = df_mood["mood"].mean()
+        
+        st.subheader("Mood Metrics")
+        m1, m2 = st.columns(2)
+        m1.metric("Average Mood", f"{avg_mood:.1f} / 11")
+        m2.metric("Highest Mood Logged", f"{df_mood['mood'].max()} {MOOD_EMOJI_MAP.get(df_mood['mood'].max())}")
+        
+        st.markdown("#### Mood Distribution")
+        mood_counts = df_mood["mood"].value_counts().reset_index()
+        mood_counts.columns = ['Mood Score', 'Count']
+        mood_counts['Mood Label'] = mood_counts['Mood Score'].apply(lambda x: MOOD_EMOJI_MAP.get(x, "N/A"))
+        
+        fig = px.bar(mood_counts, x='Mood Label', y='Count', color='Count', title="Frequency of Mood Scores")
+        st.plotly_chart(fig, use_container_width=True)
         
     st.markdown("---")
     
-    st.subheader("PHQ-9 Check-in Summary")
-    if st.session_state.get("phq9_score") is not None:
-        st.markdown(f"**Latest Score:** {st.session_state['phq9_score']}/27")
-        st.markdown(f"**Interpretation:** {st.session_state['phq9_interpretation']}")
+    # AI Summary
+    if st.session_state.get("_ai_available") and st.session_state.get("_ai_model") and total_entries > 0:
+        st.subheader("AI-Generated Monthly Summary 🤖")
+        with st.spinner("Generating personalized summary..."):
+            
+            # Combine recent 5 journal entries and 5 user chat messages for context
+            recent_journals = "\n".join([e.get("text", "") for e in st.session_state["daily_journal"][-5:]])
+            recent_chats = "\n".join([m.get("content", "") for m in st.session_state.chat_messages if m.get("role") == "user"][-5:])
+            
+            summary_prompt = f"""
+            Based on the user's recent activity (journal entries and chat messages below), provide a high-level, encouraging summary.
+            Focus on positive steps and gentle observations. Do NOT make a diagnosis.
+
+            1. **Summarize** the general tone and 1-2 key themes (e.g., stress about school, focus on friends).
+            2. **Acknowledge** any consistent positive steps (e.g., logging mood, writing often).
+            3. **Offer** one short, encouraging, future-focused statement.
+
+            **Recent Journal Entries:**
+            {recent_journals}
+            
+            **Recent Chat Messages (User's content only):**
+            {recent_chats}
+            """
+            
+            # The summary is a one-off request, so we use the client object directly
+            client = st.session_state["_ai_model"]
+            try:
+                # Build message list for the summary request
+                summary_messages = [
+                    {"role": "system", "content": "You are a wellness coach providing a gentle and encouraging summary of a user's progress."},
+                    {"role": "user", "content": summary_prompt}
+                ]
+                
+                summary_response = client.chat.completions.create(
+                    model=OPENROUTER_MODEL_NAME, 
+                    messages=summary_messages,
+                    max_tokens=400
+                )
+                
+                if summary_response.choices and summary_response.choices[0].message:
+                    st.markdown(summary_response.choices[0].message.content)
+                else:
+                    st.error("AI returned an empty response.")
+            except Exception:
+                st.error("Could not generate AI summary. Try again later.")
     else:
-        st.info("No wellness check-in completed yet. Try the **Wellness Check-in** panel.")
-
-    st.markdown("---")
-    
-    st.subheader("Badges Earned 🎖️")
-    if st.session_state["streaks"]["badges"]:
-        badge_str = ", ".join(f"**{b}**" for b in st.session_state["streaks"]["badges"])
-        st.markdown(badge_str)
-    else:
-        st.info("Keep logging your mood and journaling to earn your first badge!")
-
-def crisis_support_panel():
-    st.header("Crisis Support 🆘")
-    st.error("If you are in immediate danger, please call your local emergency services (e.g., 911 in the US).")
-    st.markdown("---")
-    st.subheader("Suicide & Crisis Resources")
-    st.markdown("""
-    - **In the US/Canada:** Call or Text **988** (Suicide & Crisis Lifeline)
-    - **Crisis Text Line:** Text **HOME** to **741741** (US/Canada) or **85258** (UK)
-    - **The Trevor Project:** Call **1-866-488-7386** (for LGBTQ youth)
-    - **International:** Visit the **International Association for Suicide Prevention** website to find a crisis center in your country.
-    
-    **Remember: You are not alone. There is always help available.**
-    """)
+        st.info("Log more entries or connect the AI to generate a detailed summary.")
 
 
-# ---------- Page Router (uses st.rerun()) ----------
+# ---------- Page Router ----------
 if st.session_state["page"] == "Home":
     homepage_panel()
 elif st.session_state["page"] == "AI Chat":
@@ -828,4 +875,4 @@ elif st.session_state["page"] == "Mindful Breathing":
 elif st.session_state["page"] == "Wellness Check-in":
     wellness_check_in_panel()
 elif st.session_state["page"] == "Report & Summary":
-    personalized_report_panel()
+    report_summary_panel()
