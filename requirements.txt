@@ -1,5 +1,10 @@
 streamlit==1.37.1
 pandas==2.2.2
+numpy
+plotly
+wordcloud
+matplotlib
+psycopg2-binary
 streamlit-authenticator==0.2.3
 supabase>=2.6.0
 supabase-auth>=2.12.3
