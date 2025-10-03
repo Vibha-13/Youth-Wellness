@@ -491,11 +491,7 @@ def ai_chat_panel():
     st.header("AI Chat 💬")
     st.markdown("A compassionate AI buddy to listen. All your messages help the AI understand you better.")
 
-    # Re-sync chat session history if Gemini is available
-    if st.session_state.get("_ai_available") and st.session_state.get("chat_session"):
-        # The history in st.session_state["chat_messages"] is managed in this function below
-        # We assume the chat_session object handles internal history correctly based on the messages we append.
-        pass
+    model = st.session_state.get("_ai_model")
 
     for message in st.session_state.chat_messages:
         with st.chat_message(message["role"]):
@@ -510,14 +506,18 @@ def ai_chat_panel():
 
         with st.chat_message("assistant"):
             with st.spinner("Listening closely..."):
-                # Use the custom-logic safe_generate function
-                ai_response = safe_generate(prompt)
+                # Pass the full chat history and the model object to safe_generate
+                ai_response = safe_generate(
+                    prompt, 
+                    st.session_state.chat_messages, 
+                    model
+                )
                 st.markdown(ai_response)
                 # Add AI response to display history
                 st.session_state.chat_messages.append({"role": "assistant", "content": ai_response})
-        # Rerun to clear input and display new messages immediately
-        st.experimental_rerun()
-
+        # Use st.rerun() to force Streamlit to clear the input and display new messages
+        # FIX APPLIED HERE:
+        st.rerun()
 def mindful_breathing_panel():
     st.header("Mindful Breathing 🧘‍♀️")
     st.markdown("Follow the prompts: **Inhale (4s) — Hold (4s) — Exhale (6s)**. Try **3 cycles** for a quick reset.")
