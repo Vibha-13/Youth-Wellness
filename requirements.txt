@@ -1,32 +1,8 @@
-# Core app
-streamlit==1.37.1
-pandas==2.2.2
-numpy==1.26.4
-matplotlib==3.9.2
-plotly==5.24.0
-pillow==10.4.0
-
-# AI / NLP
-google-generativeai==0.7.2
-vaderSentiment==3.3.2
-wordcloud==1.9.3
-
-# Audio
-sounddevice==0.4.7
-wavio==0.0.9
-pyttsx3==2.90
-
-# Database (Supabase ecosystem, all aligned to httpx<0.26)
-supabase==2.4.0
-supafunc==0.3.3
-storage3==0.7.7
-gotrue==2.9.1
-postgrest==0.16.11
-realtime==1.0.6
-
-# Networking dependency
-httpx[http2]==0.26.0
-websockets==12.0
-
-# Utilities
-tenacity==8.5.0
+streamlit
+streamlit-authenticator
+supabase
+google-generativeai
+reportlab
+python-dotenv
+pandas
+matplotlib
