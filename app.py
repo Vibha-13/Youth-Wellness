@@ -95,19 +95,22 @@ def generate_simulated_physiological_data(current_time_ms):
     """
     
     # Base HR (BPM) that gently changes over time (70-100 BPM)
-    base_hr = 85 + 10 * np.sin(current_time_ms / 30000.0)
+    # Ensure current_time_ms is treated as a float for sin function
+    time_sec = current_time_ms / 1000.0 
+    base_hr = 85 + 10 * np.sin(time_sec / 30.0) # Using time_sec for smoother change
     
     # Add high-frequency noise (Simulates a noisy sensor/motion)
+    # Using python's standard 'random' for simple noise
     ppg_noise = 3 * random.gauss(0, 1)
     
     # Simulate Filtered HR (The 'clean' signal we *want* to see)
-    clean_hr = base_hr + 2 * np.sin(current_time_ms / 500.0) 
+    clean_hr = base_hr + 2 * np.sin(time_sec / 0.5) 
     
     # Raw PPG Measurement (Noisy sine wave that simulates a pulse)
     raw_ppg_signal = clean_hr + ppg_noise
     
     # GSR/Stress Simulation (Lower value = more relaxed, Higher = more stressed)
-    # GSR is correlated with HR noise
+    # Use np.random.rand() with the np. prefix for consistency
     base_gsr = 0.5 * base_hr / 100.0
     gsr_value = 1.0 + base_gsr + 0.5 * np.random.rand() * (st.session_state.get("phq9_score", 0) / 27.0)
     
