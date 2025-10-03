@@ -75,8 +75,26 @@ Rules for response style:
             "gemini-2.5-flash",
             system_instruction=system_instruction
         )
-        # Create a new chat session to maintain conversation history
-        chat_session = model.start_chat(history=st.session_state["chat_messages"])
+        
+        # Prepare history for chat initialization
+        history_for_init = []
+        if st.session_state["chat_messages"]:
+            import google.generativeai.types as genai_types
+            for msg in st.session_state["chat_messages"]:
+                role_map = msg.get("role")
+                if role_map == "assistant":
+                    role_map = "model"
+                
+                content_text = msg.get("content")
+                if content_text:
+                    history_for_init.append(
+                        genai_types.Content(
+                            parts=[genai_types.Part.from_text(content_text)], 
+                            role=role_map
+                        )
+                    )
+
+        chat_session = model.start_chat(history=history_for_init)
         
         # Sync initial welcome message if history is empty
         if not st.session_state["chat_messages"] or st.session_state["chat_messages"][0]["role"] != "assistant":
@@ -103,11 +121,21 @@ def setup_supabase_client(url: str, key: str):
 if "page" not in st.session_state:
     st.session_state["page"] = "Home"
 
-if "messages" not in st.session_state:
-    st.session_state["messages"] = []
+# Initialize AI/DB models in state for the first time
+if "_ai_model" not in st.session_state:
+    GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
+    _ai_model_tuple, _ai_available, _chat_session_obj = setup_ai_model(GEMINI_API_KEY)
+    st.session_state["_ai_model"] = _ai_model_tuple
+    st.session_state["_ai_available"] = _ai_available
+    st.session_state["chat_session"] = _chat_session_obj
+    
+if "_supabase_client_obj" not in st.session_state:
+    SUPABASE_URL = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
+    _supabase_client_obj, _db_connected = setup_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+    st.session_state["_supabase_client_obj"] = _supabase_client_obj
+    st.session_state["_db_connected"] = _db_connected
 
-if "call_history" not in st.session_state:
-    st.session_state["call_history"] = []
 
 if "daily_journal" not in st.session_state:
     st.session_state["daily_journal"] = []
@@ -117,9 +145,6 @@ if "mood_history" not in st.session_state:
 
 if "streaks" not in st.session_state:
     st.session_state["streaks"] = {"mood_log": 0, "last_mood_date": None, "badges": []}
-
-if "transcription_text" not in st.session_state:
-    st.session_state["transcription_text"] = ""
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
@@ -139,15 +164,10 @@ if "phq9_interpretation" not in st.session_state:
 if "chat_messages" not in st.session_state:
     st.session_state["chat_messages"] = [{"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"}]
 
-if "chat_session" not in st.session_state:
-     st.session_state["chat_session"] = None
 
 analyzer = setup_analyzer()
 
 # ---------- Helper functions ----------
-def now_ts():
-    return time.time()
-
 def clean_text_for_ai(text: str) -> str:
     if not text:
         return ""
@@ -160,6 +180,9 @@ def safe_generate(prompt: str, max_tokens: int = 300):
     """
     Generate text via Gemini, using a pre-configured chat session and 
     incorporating the custom, empathetic response logic for key phrases.
+    
+    NOTE: The chat session must be initialized/updated externally (in the panel)
+          to ensure the history is correct.
     """
     
     # **CUSTOM, EMPATHETIC RESPONSE LOGIC**
@@ -175,6 +198,8 @@ def safe_generate(prompt: str, max_tokens: int = 300):
     elif "funny" in prompt_lower or "joke" in prompt_lower or "break" in prompt_lower:
         # Check for previous message to maintain context
         previous_topic = "our chat"
+        # Since the current prompt is the last message in st.session_state.chat_messages, 
+        # we look at the message before it for context.
         if len(st.session_state.chat_messages) > 1 and st.session_state.chat_messages[-2]["role"] == "user":
             previous_prompt = st.session_state.chat_messages[-2]["content"]
             previous_topic = f"what you were sharing about '{previous_prompt[:25]}...'"
@@ -185,7 +210,6 @@ def safe_generate(prompt: str, max_tokens: int = 300):
     
     # --- For all other inputs, rely on the detailed AI System Instruction ---
     
-    # Re-initialize or check for chat session
     if st.session_state.get("_ai_available") and st.session_state.get("chat_session"):
         chat_session = st.session_state["chat_session"]
         prompt_clean = clean_text_for_ai(prompt)
@@ -216,8 +240,6 @@ def get_all_user_text() -> str:
     parts += [e.get("text","") for e in st.session_state["daily_journal"] if e.get("text")]
     # User chat messages
     parts += [m.get("content","") for m in st.session_state["chat_messages"] if m.get("role") == "user" and m.get("content")]
-    # Call history (if implemented)
-    parts += [c.get("text","") for c in st.session_state["call_history"] if c.get("speaker") == "User" and c.get("text")]
     return " ".join(parts).strip()
 
 def generate_wordcloud_figure_if_possible(text: str):
@@ -299,25 +321,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---------- Services setup (executed quickly) ----------
-# Use secrets (or env) but do lazy configure with setup functions
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
-_ai_model, _ai_available, _chat_session = setup_ai_model(GEMINI_API_KEY)
-# store in session_state for safe_generate to access quickly
-st.session_state["_ai_model"] = (_ai_model, _ai_available)
-st.session_state["_ai_available"] = _ai_available
-st.session_state["chat_session"] = _chat_session # Store chat session
+# Sidebar Navigation (placed here to allow functions to be defined below)
+st.sidebar.markdown(f"- AI Status: **{'Connected' if st.session_state.get('_ai_available') else 'Local (fallback)'}**")
+st.sidebar.markdown(f"- DB Status: **{'Connected' if st.session_state.get('_db_connected') else 'Not connected'}**")
 
-SUPABASE_URL = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
-_supabase_client_obj, _db_connected = setup_supabase_client(SUPABASE_URL, SUPABASE_KEY)
-st.session_state["_supabase_client_obj"] = _supabase_client_obj
-st.session_state["_db_connected"] = _db_connected
-
-st.sidebar.markdown(f"- AI Status: **{'Connected' if _ai_available else 'Local (fallback)'}**")
-st.sidebar.markdown(f"- DB Status: **{'Connected' if _db_connected else 'Not connected'}**")
-
-# Sidebar Navigation
 st.sidebar.header("Navigation")
 page_options = {
     "Home": "🏠", 
@@ -331,7 +338,8 @@ page_options = {
 }
 st.session_state["page"] = st.sidebar.radio("Go to:", list(page_options.keys()), format_func=lambda x: f"{page_options[x]} {x}")
 
-# ---------- Sidebar: Auth ----------
+
+# ---------- Sidebar: Auth (FIXED: st.experimental_rerun -> st.rerun) ----------
 def sidebar_auth():
     st.sidebar.header("Account")
     if not st.session_state.get("logged_in"):
@@ -358,7 +366,7 @@ def sidebar_auth():
                     elif st.session_state.get("_db_connected") is False:
                          st.sidebar.info("Logged in locally (no DB).")
                          
-                    st.experimental_rerun()
+                    st.rerun() # FIXED
 
                 else:
                     # Attempt Register if DB connected and user not found
@@ -368,7 +376,7 @@ def sidebar_auth():
                         st.session_state["user_email"] = email
                         st.session_state["logged_in"] = True
                         st.sidebar.success("Registered & logged in.")
-                        st.experimental_rerun()
+                        st.rerun() # FIXED
                     else:
                         st.sidebar.error("Registration failed. Try again or check DB connection.")
             else:
@@ -382,12 +390,15 @@ def sidebar_auth():
                 st.session_state[key] = None
             st.session_state["daily_journal"] = [] # Clear local journal
             st.session_state.chat_messages = [{"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"}]
+            # Clear chat session instance to force re-init
+            st.session_state["chat_session"] = None
             st.sidebar.info("Logged out.")
-            st.experimental_rerun()
+            st.rerun() # FIXED
 
 sidebar_auth()
 
-# ---------- Panels (functions defined above for clarity) ----------
+
+# ---------- Panels ----------
 def homepage_panel():
     st.title("Your Wellness Sanctuary 🧠")
     st.markdown("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
@@ -402,15 +413,15 @@ def homepage_panel():
         with c1:
             if st.button("Start Breathing 🧘‍♀️"):
                 st.session_state["page"] = "Mindful Breathing"
-                st.experimental_rerun()
+                st.rerun() # FIXED
         with c2:
             if st.button("Talk to AI 💬"):
                 st.session_state["page"] = "AI Chat"
-                st.experimental_rerun()
+                st.rerun() # FIXED
         with c3:
             if st.button("Journal 📝"):
                 st.session_state["page"] = "Mindful Journaling"
-                st.experimental_rerun()
+                st.rerun() # FIXED
     with col2:
         st.image("https://images.unsplash.com/photo-1549490349-f06b3e942007?q=80&w=2070&auto=format&fit=crop", caption="Take a moment for yourself")
     st.markdown("---")
@@ -466,7 +477,7 @@ def mood_tracker_panel():
                             st.session_state["streaks"]["badges"].append(name)
                 except Exception:
                     continue
-            st.experimental_rerun()
+            st.rerun() # FIXED
 
     with col2:
         st.subheader("Badges 🎖️")
@@ -499,25 +510,38 @@ def ai_chat_panel():
 
     prompt = st.chat_input("What's on your mind?")
     if prompt:
-        # Add user message to display
+        # 1. Add user message to display (BEFORE calling AI)
         st.session_state.chat_messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
             with st.spinner("Listening closely..."):
-                # Pass the full chat history and the model object to safe_generate
-                ai_response = safe_generate(
-                    prompt, 
-                    st.session_state.chat_messages, 
-                    model
-                )
+                # 2. Call safe_generate
+                ai_response = safe_generate(prompt)
+                
                 st.markdown(ai_response)
-                # Add AI response to display history
+                
+                # 3. Add AI response to display history
                 st.session_state.chat_messages.append({"role": "assistant", "content": ai_response})
+                
+                # 4. Update the actual chat session instance with the new response
+                # This ensures the model's internal history is accurate for the next turn.
+                if st.session_state.get("chat_session"):
+                    try:
+                        import google.generativeai.types as genai_types
+                        st.session_state["chat_session"].history.append(
+                            genai_types.Content(
+                                parts=[genai_types.Part.from_text(ai_response)], 
+                                role="model"
+                            )
+                        )
+                    except Exception:
+                        pass # Ignore if history update fails, fallback is safe_generate logic
+                        
         # Use st.rerun() to force Streamlit to clear the input and display new messages
-        # FIX APPLIED HERE:
-        st.rerun()
+        st.rerun() # FIXED
+
 def mindful_breathing_panel():
     st.header("Mindful Breathing 🧘‍♀️")
     st.markdown("Follow the prompts: **Inhale (4s) — Hold (4s) — Exhale (6s)**. Try **3 cycles** for a quick reset.")
@@ -533,7 +557,7 @@ def mindful_breathing_panel():
     with col_btn2:
         if st.button("Reset", key="reset_breathing_btn") and not bs["running"]:
             st.session_state["breathing_state"] = {"running": False, "start_time": None, "cycles_done": 0}
-            st.experimental_rerun()
+            st.rerun() # FIXED
             return
 
     if start_btn and not bs["running"]:
@@ -541,7 +565,7 @@ def mindful_breathing_panel():
         bs["start_time"] = time.time()
         bs["cycles_done"] = 0
         st.session_state["breathing_state"] = bs
-        st.experimental_rerun()
+        st.rerun() # FIXED
 
     if bs["running"]:
         PHASES = [("Inhale 🌬️", 4.0, "#4a90e2"), ("Hold ⏸️", 4.0, "#357bd9"), ("Exhale 💨", 6.0, "#f39c12")]
@@ -561,7 +585,7 @@ def mindful_breathing_panel():
             if "Breathing Master" not in st.session_state["streaks"]["badges"]:
                 st.session_state["streaks"]["badges"].append("Breathing Master")
                 
-            st.experimental_rerun() # Rerun to display success message without running timer
+            st.rerun() # FIXED
             return
 
         st.info(f"Cycle {cycle_number} of 3")
@@ -587,7 +611,7 @@ def mindful_breathing_panel():
         
         # refresh frequently but not blocking
         time.sleep(0.1)
-        st.experimental_rerun()
+        st.rerun() # FIXED
 
 def mindful_journaling_panel():
     st.header("Mindful Journaling 📝")
@@ -618,7 +642,7 @@ def mindful_journaling_panel():
                     
                 # Clear text area for new entry
                 st.session_state["journal_text"] = "" 
-                st.experimental_rerun()
+                st.rerun() # FIXED
             else:
                 st.warning("Write something you want to save.")
     
@@ -718,185 +742,60 @@ def wellness_check_in_panel():
         if total_score >= 20:
             interpretation = "Severe: A high score suggests severe symptoms. It is **strongly recommended you seek professional help immediately**."
         elif total_score >= 15:
-            interpretation = "Moderately Severe: You should **consider making an appointment with a mental health professional** soon."
+            interpretation = "Moderately Severe: This score suggests moderately severe symptoms. Talking to a counselor or doctor is advisable."
         elif total_score >= 10:
-            interpretation = "Moderate: You may benefit from talking to a professional or increased self-care and monitoring."
+            interpretation = "Moderate: This score suggests moderate symptoms. Consider reaching out to a support system or professional."
         elif total_score >= 5:
-            interpretation = "Mild: Some symptoms are present; keep monitoring and using self-care practices."
+            interpretation = "Mild: This score suggests mild symptoms. Practicing self-care and checking in with friends can be helpful."
         else:
-            interpretation = "Minimal to None: Your score suggests few or no symptoms at present. Great job!"
+            interpretation = "Minimal: This score suggests minimal symptoms. Keep up your positive habits!"
 
         st.session_state["phq9_score"] = total_score
         st.session_state["phq9_interpretation"] = interpretation
-
-        # Badge awarding
-        if "Wellness Check-in Completed" not in st.session_state["streaks"]["badges"]:
-            st.session_state["streaks"]["badges"].append("Wellness Check-in Completed")
-            st.success("New Badge Unlocked: Wellness Check-in Completed!")
-
-    # Display results if present
-    if st.session_state.get("phq9_score") is not None:
-        st.subheader("Your PHQ-9 Score")
-        st.markdown(f"**{st.session_state['phq9_score']}** out of 27")
         
-        # Color coding the interpretation
-        if "Severe" in st.session_state["phq9_interpretation"]:
-            st.error(st.session_state["phq9_interpretation"])
-        elif "Moderately Severe" in st.session_state["phq9_interpretation"]:
-            st.warning(st.session_state["phq9_interpretation"])
-        elif "Moderate" in st.session_state["phq9_interpretation"]:
-            st.info(st.session_state["phq9_interpretation"])
+        st.subheader(f"Your PHQ-9 Score: {total_score}/27")
+        if total_score >= 10:
+            st.warning(interpretation)
         else:
-            st.success(st.session_state["phq9_interpretation"])
-
-        st.markdown("---")
+            st.success(interpretation)
         
-        # CRISIS WARNING
-        st.error("🚨 If you are in crisis or feel you might harm yourself, please call local emergency services immediately.")
-        st.markdown("In the United States, call or text **988** (Suicide & Crisis Lifeline). Look up your local emergency number or crisis line if you are elsewhere.")
-
-        col_reset, col_export = st.columns(2)
-        with col_reset:
-            if st.button("Reset PHQ-9"):
-                st.session_state["phq9_score"] = None
-                st.session_state["phq9_interpretation"] = None
-                st.experimental_rerun()
-
-        # Offer PDF export if reportlab installed
-        try:
-            from reportlab.lib.pagesizes import letter
-            from reportlab.pdfgen import canvas as pdf_canvas
-            can_export = True
-        except ImportError:
-            can_export = False
-
-        if can_export:
-            with col_export:
-                if st.button("Export PHQ-9 as PDF 📄"):
-                    buffer = io.BytesIO()
-                    c = pdf_canvas.Canvas(buffer, pagesize=letter)
-                    c.setFont("Helvetica-Bold", 14)
-                    y = 750
-                    c.drawString(40, y, "PHQ-9 Wellness Check Report")
-                    y -= 30
-                    c.setFont("Helvetica", 12)
-                    c.drawString(40, y, f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                    y -= 20
-                    c.drawString(40, y, f"Score: {st.session_state['phq9_score']} / 27")
-                    y -= 20
-                    c.drawString(40, y, f"Interpretation: {st.session_state['phq9_interpretation']}")
-                    y -= 30
-                    c.drawString(40, y, "Answers:")
-                    y -= 20
-                    for i, q in enumerate(phq_questions):
-                        # Ensure we retrieve the answer stored in state
-                        ans = answers.get(q, "Not answered")
-                        c.drawString(50, y, f"{q} — {ans[:80]}")
-                        y -= 14
-                        if y < 60:
-                            c.showPage()
-                            c.setFont("Helvetica", 12)
-                            y = 750
-                    c.save()
-                    st.download_button(label="Download PHQ-9 Report", data=buffer.getvalue(), file_name="phq9_report.pdf", mime="application/pdf")
-        else:
-            st.info("Install `reportlab` to enable PDF export.")
-
+        # Suggest Crisis Support if score is high
+        if total_score >= 20:
+            st.markdown("### Crisis Support Needed")
+            st.error("If you feel unsafe or are in crisis, please visit the **Crisis Support** panel immediately for resources.")
+        
+        st.rerun()
 
 def personalized_report_panel():
-    st.header("Report & Summary 📄")
-    st.markdown("A brief overview of your activity and AI-generated insights.")
+    st.header("Personalized Wellness Summary 📄")
     
-    all_text = get_all_user_text()
-    if not all_text:
-        st.info("No data yet. Start journaling or chatting to generate a report.")
-        return
-
-    # --- Sentiment Analysis ---
-    entries = []
-    for e in st.session_state["daily_journal"]:
-        entries.append({"date": e.get("date"), "text": e.get("text"), "sentiment": e.get("sentiment", 0)})
-    for msg in st.session_state["chat_messages"]:
-        if msg.get("role") == "user":
-            entries.append({"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "text": msg.get("content"), "sentiment": sentiment_compound(msg.get("content",""))})
-
-    df = pd.DataFrame(entries)
+    st.subheader("Your Progress at a Glance")
+    c1, c2, c3 = st.columns(3)
     
-    st.subheader("Activity Metrics")
-    st.write(f"**Total Mood Logs:** {len(st.session_state['mood_history'])}")
-    st.write(f"**Total Journal/Chat Entries:** {len(df)}")
-    st.write(f"**Current Mood Streak:** {st.session_state['streaks'].get('mood_log',0)} days 🔥")
-    
-    if not df.empty:
-        pos = len(df[df["sentiment"] >= 0.05])
-        neg = len(df[df["sentiment"] <= -0.05])
-        neu = len(df) - pos - neg
-        st.write(f"- Positive-leaning entries: **{pos}**")
-        st.write(f"- Negative-leaning entries: **{neg}**")
-    
-    st.markdown("---")
-
-    # --- AI Narrative Summary ---
-    st.subheader("AI-Generated Trend Summary 💬")
-    
-    summary = "**Summary unavailable.**"
-    if st.session_state.get("_ai_available"):
-        prompt = f"""
-        Based on the user's emotional data (journal and chat), write a supportive 3-sentence summary of their recent emotional trends. Focus on resilience, self-awareness, and gentle encouragement. Data:
-        {all_text[:4000]}
-        """
-        try:
-            # Use safe_generate but without the empathetic overrides since it's a summary
-            model, available = st.session_state.get("_ai_model")
-            if available:
-                summary = model.generate_content(clean_text_for_ai(prompt), max_output_tokens=220).text
-            else:
-                 summary = "Based on recent entries, you show resilience. Keep up the small self-care habits."
-        except Exception:
-            summary = "AI Summary failed. Remember, every step you take to understand your feelings is a win."
-    else:
-        summary = "Based on your recent entries, you're showing resilience and self-awareness. Keep going!"
-
-    st.markdown(summary)
-
-    # --- PDF Export ---
-    st.markdown("---")
-    try:
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas as pdf_canvas
-        can_export = True
-    except ImportError:
-        can_export = False
+    with c1:
+        st.metric(label="Total Mood Logs", value=len(st.session_state["mood_history"]))
+    with c2:
+        st.metric(label="Journal Entries", value=len(st.session_state["daily_journal"]))
+    with c3:
+        st.metric(label="Current Streak 🔥", value=st.session_state['streaks'].get('mood_log',0))
         
-    if can_export:
-        if st.button("Export Full Report as PDF 💾"):
-            # This is a simplified report logic
-            buffer = io.BytesIO()
-            c = pdf_canvas.Canvas(buffer, pagesize=letter)
-            c.setFont("Helvetica-Bold", 16)
-            y = 750
-            c.drawString(40, y, "Personalized Wellness Report")
-            y -= 30
-            c.setFont("Helvetica", 12)
-            c.drawString(40, y, f"Date Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            y -= 20
-            c.drawString(40, y, f"Mood Logs: {len(st.session_state['mood_history'])}")
-            y -= 20
-            c.drawString(40, y, f"Streak: {st.session_state['streaks'].get('mood_log',0)} days")
-            y -= 30
-            c.drawString(40, y, "AI Summary:")
-            y -= 14
-            for line in summary.split("\n"):
-                c.drawString(50, y, line[:110])
-                y -= 14
-                if y < 60:
-                    c.showPage()
-                    c.setFont("Helvetica", 12)
-                    y = 750
-            c.save()
-            st.download_button("Download Report PDF", buffer.getvalue(), file_name="wellness_report.pdf", mime="application/pdf")
+    st.markdown("---")
+    
+    st.subheader("PHQ-9 Check-in Summary")
+    if st.session_state.get("phq9_score") is not None:
+        st.markdown(f"**Latest Score:** {st.session_state['phq9_score']}/27")
+        st.markdown(f"**Interpretation:** {st.session_state['phq9_interpretation']}")
     else:
-        st.info("Install `reportlab` to enable PDF export for this summary.")
+        st.info("No wellness check-in completed yet. Try the **Wellness Check-in** panel.")
+
+    st.markdown("---")
+    
+    st.subheader("Badges Earned 🎖️")
+    if st.session_state["streaks"]["badges"]:
+        badge_str = ", ".join(f"**{b}**" for b in st.session_state["streaks"]["badges"])
+        st.markdown(badge_str)
+    else:
+        st.info("Keep logging your mood and journaling to earn your first badge!")
 
 def crisis_support_panel():
     st.header("Crisis Support 🆘")
@@ -913,7 +812,7 @@ def crisis_support_panel():
     """)
 
 
-# ---------- Page Router ----------
+# ---------- Page Router (uses st.rerun()) ----------
 if st.session_state["page"] == "Home":
     homepage_panel()
 elif st.session_state["page"] == "AI Chat":
@@ -930,9 +829,3 @@ elif st.session_state["page"] == "Wellness Check-in":
     wellness_check_in_panel()
 elif st.session_state["page"] == "Report & Summary":
     personalized_report_panel()
-# Always include crisis support in the sidebar or a separate hidden page if needed.
-
-# Final check: always display crisis info at the bottom for safety.
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Crisis Support")
-st.sidebar.markdown("If you need immediate help, call or text **988** (US) or local emergency services.")
