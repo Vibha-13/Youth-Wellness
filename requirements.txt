@@ -1,15 +1,19 @@
-streamlit==1.37.1
-pandas==2.2.2
+streamlit
+pandas
 numpy
 plotly
-wordcloud
 matplotlib
-psycopg2-binary
+wordcloud
+psycopg2-binary  # Connector for PostgreSQL (used by Supabase)
+
+# Authenticator and Supabase tools
 streamlit-authenticator==0.2.3
 supabase>=2.6.0
 supabase-auth>=2.12.3
 supabase-functions>=0.10.1
 httpx>=0.26,<0.29
+
+# AI
 google-generativeai==0.7.2
-reportlab==4.2.2
 python-dotenv==1.0.1
+reportlab==4.2.2
