@@ -1,10 +1,21 @@
-streamlit
-openai
-pandas
-plotly
-matplotlib
-numpy
-vaderSentiment
-python-dotenv  # Helpful for local environment variables
-supabase  # If you are using the database integration
-wordcloud  # For the journal analysis
+# Primary Application Framework
+streamlit==1.36.0 # Or latest compatible version
+
+# AI / OpenRouter
+openai==1.35.1 # Used for OpenRouter API integration (Check version compatibility)
+
+# Database (Supabase)
+supabase==2.5.0 # Or latest version
+
+# Data Handling and Visualization (Core to the project)
+pandas==2.2.2
+numpy==1.26.4
+plotly-express==0.4.1 # Or plotly==5.22.0 (Plotly Express is often included with Plotly)
+
+# NLP / Sentiment Analysis
+vaderSentiment==3.3.2
+
+# Design / ECE Component (DSP & WordCloud)
+# Wordcloud is needed for the Journal Analysis panel
+wordcloud==1.9.3 
+matplotlib==3.8.4 # Used by wordcloud for plotting
