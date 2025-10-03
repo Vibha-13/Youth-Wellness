@@ -1,20 +1,10 @@
 streamlit
+openai
 pandas
-numpy
 plotly
 matplotlib
-wordcloud
-psycopg2-binary  # Connector for PostgreSQL (used by Supabase)
-vaderSentiment   # <--- ADD THIS LINE FOR JOURNAL ANALYSIS
-
-# Authenticator and Supabase tools
-streamlit-authenticator==0.2.3
-supabase>=2.6.0
-supabase-auth>=2.12.3
-supabase-functions>=0.10.1
-httpx>=0.26,<0.29
-
-# AI
-google-generativeai==0.7.2
-python-dotenv==1.0.1
-reportlab==4.2.2
+numpy
+vaderSentiment
+python-dotenv  # Helpful for local environment variables
+supabase  # If you are using the database integration
+wordcloud  # For the journal analysis
