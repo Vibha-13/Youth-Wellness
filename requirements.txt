@@ -5,6 +5,7 @@ plotly
 matplotlib
 wordcloud
 psycopg2-binary  # Connector for PostgreSQL (used by Supabase)
+vaderSentiment   # <--- ADD THIS LINE FOR JOURNAL ANALYSIS
 
 # Authenticator and Supabase tools
 streamlit-authenticator==0.2.3
