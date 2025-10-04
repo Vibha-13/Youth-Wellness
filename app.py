@@ -69,8 +69,22 @@ PHQ9_INTERPRETATION = {
     (5, 9): "Mild",
     (10, 14): "Moderate",
     (15, 19): "Moderately Severe",
-    (20, 27): "Severe"
+    (20, 27): "Severe" # Severe is 20-27
 }
+
+# [NEW CONSTANT: Safety Threshold]
+PHQ9_CRISIS_THRESHOLD = 20 # Score of 20 or higher is 'Severe'
+SUICIDE_IDEATION_QUESTION_INDEX = 8 # Index for question 9 (0-indexed)
+
+# [NEW CONSTANT: CBT Prompts]
+CBT_PROMPTS = [
+    "**1. The Situation:** What event or trigger led to the strong negative feeling?",
+    "**2. The Emotion:** What emotion did you feel? (e.g., Sad, Angry, Anxious, Worthless, Lonely)",
+    "**3. The Thought:** What specific automatic negative thought went through your mind? (This is the most crucial part!)",
+    "**4. The Evidence FOR the thought:** What facts support your negative thought?",
+    "**5. The Evidence AGAINST the thought:** What facts or alternative perspectives go against your negative thought? (Look for exceptions, logic, or other interpretations)",
+    "**6. The Balanced Reframe:** What is a more helpful, realistic, and balanced thought you can have right now?"
+]
 
 
 # ---------- Streamlit page config and LAYOUT SETUP ----------
@@ -235,6 +249,7 @@ def kalman_filter_simple(z_meas, state):
     state['P_est'] = P_est
     return x_est, state
 
+# [NEW/POLISH: Add noise to GSR simulation]
 def generate_simulated_physiological_data(current_time_ms):
     """
     Simulates noisy PPG (Heart Rate) and GSR (Stress) data.
@@ -258,11 +273,13 @@ def generate_simulated_physiological_data(current_time_ms):
     base_gsr = 0.5 * base_hr / 100.0
     phq9_score = st.session_state.get("phq9_score") or 0
     # Normalize score by max possible (27)
-    gsr_value = 1.0 + base_gsr + 0.5 * np.random.rand() * (phq9_score / 27.0)
+    gsr_base = 1.0 + base_gsr + 0.5 * np.random.rand() * (phq9_score / 27.0)
+    gsr_noise = 0.5 * random.gauss(0, 1) # Add some noise to GSR
+    gsr_value = gsr_base + gsr_noise
     
     return {
         "raw_ppg_signal": raw_ppg_signal, 
-        "filtered_hr": clean_hr, # [NEW: Added for Check-in panel]
+        "filtered_hr": clean_hr, 
         "gsr_stress_level": gsr_value,
         "time_ms": current_time_ms
     }
@@ -283,12 +300,12 @@ def setup_ai_model(api_key: str, history: list):
             base_url=OPENROUTER_BASE_URL
         )
         
-        # [UPGRADED: Enhanced System Instruction]
+        # [UPGRADED: Enhanced System Instruction for safety]
         system_instruction = """
 You are 'The Youth Wellness Buddy,' an AI designed for teenagers. 
 Your primary goal is to provide non-judgemental, empathetic, and encouraging support. 
 Your personality is warm, slightly informal, and very supportive.
-Crucially: Always validate the user's feelings first. Never give medical or diagnostic advice. Focus on suggesting simple, actionable coping strategies like breathing, journaling, or connecting with friends. Keep responses concise and focused on the user's current emotional context.
+Crucially: Always validate the user's feelings first. Never give medical or diagnostic advice. Focus on suggesting simple, actionable coping strategies like breathing, journaling, or connecting with friends. **If a user mentions severe distress, suicidal ideation, or self-harm, immediately pivot to encouraging them to contact a crisis hotline or a trusted adult, and ONLY offer simple, grounding coping methods (like 5-4-3-2-1 technique) until they confirm safety measures are taken. Your priority is safety.** Keep responses concise and focused on the user's current emotional context.
 """
         # Append system instruction to history if it's the first element
         if not history or history[0].get("role") != "system":
@@ -324,6 +341,9 @@ if "physiological_data" not in st.session_state:
 # [NEW: Store latest ECE Data]
 if "latest_ece_data" not in st.session_state:
     st.session_state["latest_ece_data"] = {"filtered_hr": 75.0, "gsr_stress_level": 1.0}
+# [NEW: Store ECE History for correlation]
+if "ece_history" not in st.session_state:
+    st.session_state["ece_history"] = []
 
 
 # AI/DB/Auth State
@@ -381,6 +401,11 @@ if "last_phq9_date" not in st.session_state:
 # CBT/Journaling State
 if "last_reframing_card" not in st.session_state:
     st.session_state["last_reframing_card"] = None
+# [NEW: CBT Thought Record State]
+if "cbt_thought_record" not in st.session_state:
+    st.session_state["cbt_thought_record"] = {}
+    for i in range(len(CBT_PROMPTS)):
+        st.session_state["cbt_thought_record"][i] = ""
 
 # Breathing State
 if "breathing_state" not in st.session_state:
@@ -408,6 +433,12 @@ def safe_generate(prompt: str, max_tokens: int = 300):
             "Thanks for sharing that with me. That feeling of demotivation can be really heavy, and it takes a lot of courage just to name it. I want you to know you're not alone. Before we try to tackle the whole mountain, let's just look at one rock. Is there one tiny task or thought that feels the heaviest right now? 🌱"
         )
     
+    # [NEW: Safety Catch in AI Chat]
+    if any(phrase in prompt_lower for phrase in ["hurt myself", "end it all", "suicide", "better off dead", "kill myself"]):
+        return (
+            "**🛑 STOP. This is an emergency.** Please contact help immediately. Your safety is the most important thing. **Call or text 988 (US/Canada) or a local crisis line NOW.** You can also reach out to a trusted family member or teacher. Hold on, you are not alone. Let's try the 5-4-3-2-1 grounding technique together: Name 5 things you see, 4 things you feel, 3 things you hear, 2 things you smell, and 1 thing you taste."
+        )
+    
     # Default AI generation
     if st.session_state.get("_ai_available") and st.session_state.get("_ai_model"):
         client = st.session_state["_ai_model"]
@@ -419,9 +450,12 @@ def safe_generate(prompt: str, max_tokens: int = 300):
              messages_for_api.append({"role": "user", "content": prompt_clean})
 
         try:
+            # Only send the last 10 messages (plus system instruction) to keep context manageable
+            context_messages = [messages_for_api[0]] + messages_for_api[-10:]
+            
             resp = client.chat.completions.create(
                 model=OPENROUTER_MODEL_NAME,
-                messages=messages_for_api,
+                messages=context_messages,
                 max_tokens=max_tokens,
                 temperature=0.7 
             )
@@ -454,7 +488,10 @@ def get_all_user_text() -> str:
     return " ".join(parts).strip()
 
 
-# ---------- Supabase helpers (UPGRADED for Mood/PHQ-9) ----------
+# ---------- Supabase helpers (UPGRADED for ECE History) ----------
+
+# ... (Supabase functions for users, journal, mood, phq9 remain the same) ...
+
 def register_user_db(email: str):
     supabase_client = st.session_state.get("_supabase_client_obj")
     if not supabase_client:
@@ -486,7 +523,6 @@ def save_journal_db(user_id, text: str, sentiment: float) -> bool:
     except Exception:
         return False
 
-# [NEW DB FUNCTION]
 def save_mood_db(user_id, mood: int, note: str) -> bool:
     supabase_client = st.session_state.get("_supabase_client_obj")
     if not supabase_client:
@@ -497,7 +533,6 @@ def save_mood_db(user_id, mood: int, note: str) -> bool:
     except Exception:
         return False
 
-# [NEW DB FUNCTION]
 def save_phq9_db(user_id, score: int, interpretation: str) -> bool:
     supabase_client = st.session_state.get("_supabase_client_obj")
     if not supabase_client:
@@ -507,12 +542,27 @@ def save_phq9_db(user_id, score: int, interpretation: str) -> bool:
         return True
     except Exception:
         return False
-
+        
+# [NEW DB FUNCTION]
+def save_ece_log_db(user_id, filtered_hr: float, gsr_stress: float, mood_score: int) -> bool:
+    supabase_client = st.session_state.get("_supabase_client_obj")
+    if not supabase_client:
+        return False
+    try:
+        supabase_client.table("ece_logs").insert({
+            "user_id": user_id, 
+            "filtered_hr": filtered_hr, 
+            "gsr_stress": gsr_stress,
+            "mood_score": mood_score
+        }).execute()
+        return True
+    except Exception:
+        return False
 
 @st.cache_data(show_spinner=False)
 def load_all_user_data(user_id, supabase_client):
     if not supabase_client:
-        return {"journal": [], "mood": [], "phq9": []}
+        return {"journal": [], "mood": [], "phq9": [], "ece": []}
     
     data = {}
     try:
@@ -528,9 +578,13 @@ def load_all_user_data(user_id, supabase_client):
         res_p = supabase_client.table("phq9_scores").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(1).execute()
         data["phq9"] = res_p.data or []
 
+        # [NEW DB LOAD] Load ECE History
+        res_e = supabase_client.table("ece_logs").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+        data["ece"] = [{"date": e.get("created_at"), "hr": e.get("filtered_hr"), "stress": e.get("gsr_stress"), "mood": e.get("mood_score")} for e in res_e.data or []]
+
     except Exception:
         # Fallback to empty lists on failure
-        return {"journal": [], "mood": [], "phq9": []}
+        return {"journal": [], "mood": [], "phq9": [], "ece": []}
         
     return data
 
@@ -560,6 +614,7 @@ page_options = {
     "AI Chat": "💬", 
     "Mood Tracker": "📈", 
     "Mindful Journaling": "📝", 
+    "CBT Thought Record": "✍️", # [NEW PAGE]
     "Journal Analysis": "📊",
     "Mindful Breathing": "🧘‍♀️", 
     "IoT Dashboard (ECE)": "⚙️", 
@@ -597,10 +652,11 @@ def sidebar_auth():
                     st.session_state["logged_in"] = True
                     
                     if user and db_connected:
-                        # [UPGRADED: Load ALL data]
+                        # Load ALL data
                         user_data = load_all_user_data(st.session_state["user_id"], st.session_state.get("_supabase_client_obj"))
                         st.session_state["daily_journal"] = user_data["journal"]
                         st.session_state["mood_history"] = user_data["mood"]
+                        st.session_state["ece_history"] = user_data["ece"] # [NEW: Load ECE History]
                         
                         if user_data["phq9"]:
                             latest_phq9 = user_data["phq9"][0]
@@ -636,9 +692,10 @@ def sidebar_auth():
             
             # Reset major states
             st.session_state["daily_journal"] = []
-            st.session_state["mood_history"] = [] # [NEW: Reset mood history]
+            st.session_state["mood_history"] = []
             st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level"])
             st.session_state["kalman_state"] = initialize_kalman()
+            st.session_state["ece_history"] = [] # [NEW: Reset ECE History]
             
             # Reset AI history
             raw_key = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
@@ -658,6 +715,10 @@ sidebar_auth()
 def homepage_panel():
     st.markdown(f"<h1>Your Wellness Sanctuary <span style='color: #5D54A4;'>🧠</span></h1>", unsafe_allow_html=True)
     st.markdown("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
+    
+    # [NEW/SAFETY: Alert on high PHQ-9]
+    if st.session_state.get("phq9_score") is not None and st.session_state["phq9_score"] >= PHQ9_CRISIS_THRESHOLD:
+        st.error("🚨 **CRISIS ALERT:** Your last Wellness Check-in indicated a high level of distress. Please prioritize contacting a helpline or trusted adult immediately. Your safety is paramount.")
     
     st.markdown("---")
     
@@ -698,7 +759,7 @@ def homepage_panel():
     # --- Row 3: Feature Cards ---
     st.markdown("<h2>Your Toolkit</h2>", unsafe_allow_html=True)
     
-    col_mood, col_journal = st.columns(2)
+    col_mood, col_cbt = st.columns(2)
 
     with col_mood:
         st.markdown(f"""
@@ -709,25 +770,17 @@ def homepage_panel():
         </div>
         """, unsafe_allow_html=True)
 
-    with col_journal:
+    with col_cbt:
+        # [NEW: CBT Card]
         st.markdown(f"""
-        <div class='card' style='border-left: 8px solid #28A745; height: 180px;'>
-            <h3 style='margin-top:0;'>Mindful Journaling 📝</h3>
-            <p style='font-size: 0.95rem;'>A private space for reflection. The AI analyzes your entries to provide insights and sentiment scores.</p>
-            <div style='text-align: right;'><a href='#' onclick="window.parent.document.querySelector('input[value=\\'📝 Mindful Journaling\\']').click(); return false;" style='color:#28A745; font-weight: 600; text-decoration: none;'>Start Writing →</a></div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    # IoT/ECE Card
-    with st.container():
-        st.markdown(f"""
-        <div class='card' style='border-left: 8px solid #FF5733;'>
-            <h3 style='margin-top:0;'>IoT Monitoring (ECE Demo) ⚙️</h3>
-            <p style='font-size: 0.95rem;'>Simulated real-time physiological data (Heart Rate/Stress) using a Kalman Filter demonstration. See the Check-in panel for integration.</p>
-            <div style='text-align: right;'><a href='#' onclick="window.parent.document.querySelector('input[value=\\'⚙️ IoT Dashboard (ECE)\\']').click(); return false;" style='color:#FF5733; font-weight: 600; text-decoration: none;'>Go to Dashboard →</a></div>
+        <div class='card' style='border-left: 8px solid #00BFFF; height: 180px;'>
+            <h3 style='margin-top:0;'>CBT Thought Record ✍️</h3>
+            <p style='font-size: 0.95rem;'>Use structured steps to challenge automatic negative thoughts and find balanced perspectives.</p>
+            <div style='text-align: right;'><a href='#' onclick="window.parent.document.querySelector('input[value=\\'✍️ CBT Thought Record\\']').click(); return false;" style='color:#00BFFF; font-weight: 600; text-decoration: none;'>Start Reframing →</a></div>
         </div>
         """, unsafe_allow_html=True)
 
+# ... (Mood Tracker and AI Chat panels remain the same) ...
 
 # ---------- PANELS: Mood Tracker ----------
 def mood_tracker_panel():
@@ -743,14 +796,31 @@ def mood_tracker_panel():
             if st.button("Log Mood", key="log_mood_btn"):
                 entry = {"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "mood": mood, "note": note}
                 
-                # [UPGRADED: Save to DB]
+                # [NEW: Log ECE Data with Mood]
+                latest_ece = st.session_state["latest_ece_data"]
                 if st.session_state.get("logged_in") and st.session_state.get("_db_connected"):
                     save_mood_db(st.session_state["user_id"], mood, note)
+                    # Log ECE data to correlate mood and vitals
+                    save_ece_log_db(
+                        st.session_state["user_id"], 
+                        latest_ece["filtered_hr"], 
+                        latest_ece["gsr_stress_level"],
+                        mood
+                    )
                     st.success("Mood logged and saved to DB! 👍")
                 else:
                     st.info("Mood logged locally. Log in to save permanently.")
                     
-                st.session_state["mood_history"].insert(0, entry) # Insert at the beginning to keep it sorted descending
+                st.session_state["mood_history"].insert(0, entry) 
+                
+                # Add ECE log locally too
+                st.session_state["ece_history"].insert(0, {
+                    "date": entry["date"],
+                    "hr": latest_ece["filtered_hr"],
+                    "stress": latest_ece["gsr_stress_level"],
+                    "mood": mood
+                })
+
 
                 # Streak Logic
                 last_date = st.session_state["streaks"].get("last_mood_date")
@@ -814,7 +884,6 @@ def mood_tracker_panel():
         else:
             st.markdown("_No badges yet — log a mood to get started!_")
 
-
 # ---------- PANELS: AI Chat ----------
 def ai_chat_panel():
     st.header("AI Chat 💬")
@@ -840,6 +909,7 @@ def ai_chat_panel():
             
         # Get AI response
         with st.spinner("Thinking..."):
+            # Check for crisis keywords before calling safe_generate
             response = safe_generate(prompt)
 
         # Append assistant message to history
@@ -889,6 +959,7 @@ def mindful_journaling_panel():
                 # --- CBT Enhancement: Simple AI Reframing ---
                 if st.session_state.get("_ai_available") and sentiment_score < -0.2:
                     with st.spinner("AI is generating a helpful reframing thought..."):
+                        # Refined CBT prompt
                         cbt_prompt = f"The user just wrote a journal entry with a negative sentiment (-0.2 or lower). Generate one single, brief, non-clinical 'Coping Card' thought (cognitive reframing statement) based on the user's entry that is empathetic, validates their feeling, and offers a slightly more constructive perspective. The entry was: '{entry_text[:200]}...'"
                         reframing_thought = safe_generate(cbt_prompt, max_tokens=100)
                         
@@ -922,7 +993,97 @@ def mindful_journaling_panel():
     else:
         st.info("Your journal is empty. Write your first entry!")
 
+# [NEW PANEL: CBT Thought Record]
+def cbt_thought_record_panel():
+    st.header("CBT Thought Record ✍️")
+    st.markdown("A structured tool for identifying and challenging negative thought patterns, a core technique in Cognitive Behavioral Therapy (CBT).")
+    
+    with st.form("cbt_thought_record_form"):
+        st.markdown("<div class='card' style='padding: 20px;'>", unsafe_allow_html=True)
+        
+        # Display the guided steps
+        for i, prompt in enumerate(CBT_PROMPTS):
+            # Use text_area for longer responses, text_input for shorter ones
+            height = 100 if i >= 3 else 50
+            if i == 5: # The final reframe is a key output
+                st.subheader(prompt)
+                st.session_state["cbt_thought_record"][i] = st.text_area(
+                    "Your Balanced Thought", 
+                    value=st.session_state["cbt_thought_record"].get(i, ""),
+                    key=f"cbt_input_{i}",
+                    height=80
+                )
+            else:
+                st.markdown(f"**{prompt}**")
+                st.session_state["cbt_thought_record"][i] = st.text_input(
+                    "Your Answer", 
+                    value=st.session_state["cbt_thought_record"].get(i, ""),
+                    key=f"cbt_input_{i}",
+                )
+
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        submit_button = st.form_submit_button("Generate AI Feedback & Clear", use_container_width=True)
+        
+    if submit_button:
+        if all(st.session_state["cbt_thought_record"].values()):
+            # Compile the record for AI analysis
+            record_summary = "\n".join([f"{CBT_PROMPTS[i]}: {st.session_state['cbt_thought_record'][i]}" for i in range(len(CBT_PROMPTS))])
+            
+            if st.session_state.get("_ai_available"):
+                with st.spinner("AI is reviewing your Thought Record for reinforcement..."):
+                    
+                    ai_prompt = f"""
+                    Review the user's completed CBT Thought Record. Do not give advice. Provide one short, encouraging paragraph (3-4 sentences max) that:
+                    1. Validates the difficulty of the process.
+                    2. Praises them for finding a "Balanced Reframe".
+                    3. Reinforces why the reframe (Step 6) is a positive, helpful step toward challenging the original negative thought (Step 3).
+                    
+                    Thought Record:
+                    {record_summary}
+                    """
+                    
+                    ai_feedback = safe_generate(ai_prompt, max_tokens=150)
+                
+                st.success("CBT Record submitted! Here is your AI feedback:")
+                st.markdown(f"""
+                <div class='card' style='border-left: 8px solid #00BFFF; background-color: #F0FAFF;'>
+                    <p style='white-space: pre-wrap;'>{ai_feedback}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            else:
+                st.success("CBT Record submitted and saved! Great job finding a balanced perspective.")
+            
+            # Save the thought record as a journal entry (for persistence)
+            full_entry = f"**CBT Thought Record Completed:**\n{record_summary}"
+            sentiment = sentiment_compound(st.session_state["cbt_thought_record"][5]) # Use reframe sentiment
+            
+            new_entry = {
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
+                "text": full_entry, 
+                "sentiment": sentiment
+            }
+            st.session_state["daily_journal"].insert(0, new_entry)
+            
+            if st.session_state.get("logged_in") and st.session_state.get("_db_connected"):
+                save_journal_db(st.session_state["user_id"], full_entry, sentiment)
+            
+            # Clear the form for the next use
+            for i in range(len(CBT_PROMPTS)):
+                st.session_state["cbt_thought_record"][i] = ""
+                
+            # Use explicit key reset to clear form inputs fully
+            for i in range(len(CBT_PROMPTS)):
+                 del st.session_state[f"cbt_input_{i}"]
+
+            st.rerun() # Rerun to clear form
+
+        else:
+            st.warning("Please fill out all steps of the Thought Record.")
+
 # ---------- PANELS: Journal Analysis ----------
+# ... (Journal Analysis panel remains the same) ...
 def journal_analysis_panel():
     st.header("Journal Analysis 📊")
     
@@ -971,10 +1132,12 @@ def journal_analysis_panel():
         color_continuous_scale=px.colors.sequential.Sunsetdark, # Nice gradient color scheme
         labels={'sentiment_score': 'Sentiment Score', 'date': 'Date'}
     )
+    fig.update_layout(xaxis_title="Date", yaxis_title="Sentiment Score")
     st.plotly_chart(fig, use_container_width=True)
 
 
 # ---------- PANELS: Mindful Breathing ----------
+# ... (Mindful Breathing panel remains the same) ...
 def mindful_breathing_panel():
     st.header("Mindful Breathing 🧘‍♀️")
     st.markdown("Follow the circle for a calming 4-4-6 breathing exercise.")
@@ -1072,7 +1235,6 @@ def mindful_breathing_panel():
         time.sleep(0.1)
         st.rerun()
 
-
 # ---------- PANELS: IoT Dashboard (ECE Demo) ----------
 def iot_dashboard_panel():
     st.header("IoT Dashboard (ECE Demo) ⚙️")
@@ -1095,7 +1257,7 @@ def iot_dashboard_panel():
         "gsr_stress_level": new_raw_data["gsr_stress_level"]
     }
     
-    # [NEW: Update latest ECE data for Check-in panel]
+    # [POLISH: Update latest ECE data for Check-in panel]
     st.session_state["latest_ece_data"] = {
         "filtered_hr": filtered_hr,
         "gsr_stress_level": new_raw_data["gsr_stress_level"]
@@ -1157,9 +1319,22 @@ def wellness_checkin_panel():
     st.header("Wellness Check-in 🩺")
     st.markdown("This is a simplified, non-diagnostic version of the PHQ-9. Use it to check in with yourself.")
     
+    # [NEW/SAFETY: CRISIS WARNING]
+    st.markdown(f"""
+    <div class='card' style='border-left: 8px solid #E84A5F; background-color: #FFF2F2; margin-bottom: 25px;'>
+        <h3 style='margin-top:0; color: #E84A5F;'>🚨 Your Safety is Primary</h3>
+        <p style='font-size: 0.95rem; font-weight: 600;'>If you are in immediate crisis or having thoughts of harming yourself, **do not rely on this app**. Please contact help immediately:</p>
+        <ul style='font-size: 0.95rem;'>
+            <li>**Call/Text 988** (Suicide & Crisis Lifeline - US/Canada)</li>
+            <li>**Text HOME to 741741** (Crisis Text Line)</li>
+            <li>Go to the nearest emergency room.</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
+    
     today_str = datetime.now().strftime("%Y-%m-%d")
 
-    # 1. [NEW: ECE Data Integration]
+    # 1. ECE Data Integration
     latest_hr = st.session_state["latest_ece_data"]["filtered_hr"]
     latest_gsr_stress_raw = st.session_state["latest_ece_data"]["gsr_stress_level"]
     latest_gsr_stress = max(0, latest_gsr_stress_raw - 1.0) * 10
@@ -1202,6 +1377,11 @@ def wellness_checkin_panel():
             <p style='font-size: 0.9rem; color: #777;'>*Scores are for self-reflection and not medical advice.*</p>
         </div>
         """, unsafe_allow_html=True)
+        
+        # [NEW/SAFETY: Post-submission crisis warning]
+        if score >= PHQ9_CRISIS_THRESHOLD:
+            st.error(f"🚨 **Action Required:** A score of **{score} ({interpretation})** is considered Severe. We strongly encourage you to seek professional support immediately. The resources above are available 24/7.")
+            
         return
 
     # 2. PHQ-9 Questions
@@ -1226,6 +1406,9 @@ def wellness_checkin_panel():
             answer = phq9_answers[i]
             total_score += PHQ9_SCORES.get(answer, 0)
             
+        # [NEW/SAFETY: Check if Q9 was answered high (3)]
+        q9_score = PHQ9_SCORES.get(phq9_answers[SUICIDE_IDEATION_QUESTION_INDEX], 0)
+        
         # Determine interpretation
         interpretation = "N/A"
         for score_range, text in PHQ9_INTERPRETATION.items():
@@ -1247,13 +1430,35 @@ def wellness_checkin_panel():
         }
         st.session_state["mood_history"].insert(0, mood_entry)
 
-        # [UPGRADED: Save PHQ-9 and Mood to DB]
+        # Log ECE data with the PHQ-9 mood
+        latest_ece = st.session_state["latest_ece_data"]
+        
+        # Save to DB
         if st.session_state.get("logged_in") and st.session_state.get("_db_connected"):
              save_phq9_db(st.session_state["user_id"], total_score, interpretation)
              save_mood_db(st.session_state["user_id"], phq9_mood, mood_entry["note"])
+             save_ece_log_db(
+                 st.session_state["user_id"], 
+                 latest_ece["filtered_hr"], 
+                 latest_ece["gsr_stress_level"],
+                 phq9_mood
+             )
+        
+        # Log ECE data locally too
+        st.session_state["ece_history"].insert(0, {
+            "date": mood_entry["date"],
+            "hr": latest_ece["filtered_hr"],
+            "stress": latest_ece["gsr_stress_level"],
+            "mood": phq9_mood
+        })
 
         st.success(f"Check-in complete! Your score is {total_score}.")
-        st.balloons()
+        
+        # [NEW/SAFETY: Post-submission crisis WARNING]
+        if total_score >= PHQ9_CRISIS_THRESHOLD or q9_score == 3:
+            st.error(f"🚨 **HIGH ALERT: Your safety is the priority.** Your score is **{total_score}** and/or you reported severe thoughts of self-harm. Please contact **988** or the **Crisis Text Line (text HOME to 741741)** immediately. We cannot provide crisis intervention.")
+            st.balloons()
+        
         st.rerun()
 
 
@@ -1265,14 +1470,16 @@ def report_summary_panel():
     col1, col2, col3, col4 = st.columns(4)
 
     # 1. Key Metrics Overview
+    df_mood = pd.DataFrame(st.session_state["mood_history"])
+    df_journal = pd.DataFrame(st.session_state["daily_journal"])
+    
     with col1:
         st.subheader("Mood")
-        avg_mood = pd.DataFrame(st.session_state["mood_history"])['mood'].mean() if st.session_state["mood_history"] else 0
+        avg_mood = df_mood['mood'].mean() if not df_mood.empty else 0
         st.metric("Avg. Mood Score", f"{avg_mood:.1f}/11")
 
     with col2:
         st.subheader("Journal")
-        df_journal = pd.DataFrame(st.session_state["daily_journal"])
         avg_sentiment = df_journal['sentiment'].mean() if not df_journal.empty else 0
         st.metric("Avg. Sentiment", f"{avg_sentiment:.2f}")
 
@@ -1331,11 +1538,10 @@ def report_summary_panel():
     
     with col_vis1:
         st.subheader("Mood Timeline")
-        if st.session_state["mood_history"]:
-            df = pd.DataFrame(st.session_state["mood_history"]).copy()
-            df['date'] = pd.to_datetime(df['date'])
-            df = df.sort_values('date', ascending=True)
-            fig = px.line(df, x='date', y='mood', markers=True, color_discrete_sequence=['#4a90e2'])
+        if not df_mood.empty:
+            df_mood['date'] = pd.to_datetime(df_mood['date'])
+            df_mood = df_mood.sort_values('date', ascending=True)
+            fig = px.line(df_mood, x='date', y='mood', markers=True, color_discrete_sequence=['#4a90e2'])
             fig.update_layout(height=300)
             st.plotly_chart(fig, use_container_width=True)
 
@@ -1347,6 +1553,53 @@ def report_summary_panel():
             fig.update_layout(yaxis_title="Number of Entries", height=300)
             st.plotly_chart(fig, use_container_width=True)
 
+    st.markdown("---")
+
+    # [NEW VISUALIZATION: ECE & Mood Correlation]
+    st.subheader("Physiological Vitals (Stress) vs. Reported Mood")
+    
+    if st.session_state["ece_history"]:
+        df_ece = pd.DataFrame(st.session_state["ece_history"]).copy()
+        df_ece['date'] = pd.to_datetime(df_ece['date']).dt.date # Use only date for daily correlation
+        
+        # Aggregate daily ECE data (mean stress, mean HR, and corresponding mood)
+        df_corr = df_ece.groupby('date').agg({
+            'stress': 'mean',
+            'mood': 'first' # Take the mood logged on that day
+        }).reset_index()
+        
+        # Calculate Stress Index (Normalized GSR: max(0, gsr - 1.0) * 10)
+        df_corr['stress_index'] = df_corr['stress'].apply(lambda x: max(0, x - 1.0) * 10)
+
+        # Plot Correlation
+        fig_corr = px.scatter(
+            df_corr, 
+            x='stress_index', 
+            y='mood', 
+            color='date',
+            title='Daily Stress Index vs. Reported Mood Score',
+            labels={'stress_index': 'Avg. Daily Stress Index (ECE)', 'mood': 'Daily Mood Score (1-11)'}
+        )
+        fig_corr.update_layout(
+            xaxis_range=[0, df_corr['stress_index'].max() + 1],
+            yaxis_range=[1, 11]
+        )
+        st.plotly_chart(fig_corr, use_container_width=True)
+        
+        # Simple interpretation of correlation
+        if len(df_corr) > 1:
+            stress_mood_corr = df_corr['stress_index'].corr(df_corr['mood'])
+            st.caption(f"Correlation (Stress Index vs. Mood): **{stress_mood_corr:.2f}**")
+            if stress_mood_corr < -0.3:
+                st.info("💡 **Insight:** Your stress index shows a moderately strong **negative correlation** with your reported mood. This suggests that when your body's stress indicators go up, your mood tends to go down. Keep using breathing exercises!")
+            elif stress_mood_corr > 0.3:
+                 st.warning("❓ **Insight:** An unexpected positive correlation exists. This is unusual and might suggest noise or a correlation with excitement/high energy. Keep monitoring your logs!")
+            else:
+                st.caption("Correlation is weak. There doesn't appear to be a simple linear link between your average daily simulated stress and your reported mood.")
+            
+    else:
+        st.info("Log a few moods to the Mood Tracker to start seeing the correlation between your simulated physiological data and your emotional state!")
+
 
 # ---------- MAIN ROUTER (RETAINED) ----------
 if st.session_state["page"] == "Home":
@@ -1357,6 +1610,8 @@ elif st.session_state["page"] == "Mood Tracker":
     mood_tracker_panel()
 elif st.session_state["page"] == "Mindful Journaling":
     mindful_journaling_panel()
+elif st.session_state["page"] == "CBT Thought Record": # [NEW ROUTE]
+    cbt_thought_record_panel()
 elif st.session_state["page"] == "Journal Analysis":
     journal_analysis_panel()
 elif st.session_state["page"] == "Mindful Breathing":
