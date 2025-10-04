@@ -74,6 +74,129 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+def setup_page_and_layout():
+    # --- DEFINITIVE CSS INJECTION TO FIX TEXT AREA ---
+    # This aggressive CSS block ensures the text area is always visible and functional.
+    st.markdown("""
+    <style>
+    /* 1. Global Background and Typography */
+    .stApp { 
+        background: #F0F2F6; /* Very Light Grey/Off-White background */
+        color: #1E1E1E; 
+        font-family: 'Poppins', sans-serif; 
+    }
+    .main .block-container { 
+        padding: 2rem 4rem; /* Generous padding */
+    }
+    
+    /* 2. CRITICAL: Target the Streamlit Text Area's internal input element */
+    textarea {
+        color: black !important; /* Forces the input text to be black */
+        -webkit-text-fill-color: black !important; /* For Safari/Chrome text color issues */
+        opacity: 1 !important; /* Ensure it's not hidden by opacity */
+        background-color: white !important; /* Ensure background is white */
+        border: 1px solid #ccc !important; /* Ensure a visible border */
+    }
+
+    /* 3. Target the main Streamlit container for the text area */
+    .stTextArea > div > div > textarea {
+        color: black !important;
+    }
+
+    /* 4. Ensure the div wrapping the text area is visible */
+    .stTextArea {
+        opacity: 1 !important; 
+    }
+    
+    /* 5. Sidebar Aesthetics */
+    .css-1d3f90z { /* Streamlit sidebar selector */
+        background-color: #FFFFFF; /* White background for sidebar */
+        box-shadow: 2px 0 10px rgba(0,0,0,0.05); /* Subtle shadow */
+    }
+    
+    /* 6. Custom Card Style (The Core Mobile App Look) */
+    .card { 
+        background-color: #FFFFFF; /* White background for the card */
+        border-radius: 16px; /* Highly rounded corners */
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1); /* Soft, noticeable shadow for lift */
+        padding: 25px; /* Slightly more padding */
+        margin-bottom: 20px; 
+        border: none; 
+        transition: all .2s ease-in-out; 
+    }
+    .card:hover { 
+        transform: translateY(-3px); /* Subtle hover lift */
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15); 
+    }
+
+    /* 7. Primary Button Style (Vibrant and Rounded) */
+    .stButton>button { 
+        color: #FFFFFF; 
+        background: #5D54A4; /* Deep Purple */
+        border-radius: 25px; /* Pill shape */
+        padding: 10px 20px; 
+        font-weight: 600; 
+        border: none; 
+        box-shadow: 0 3px 5px rgba(0,0,0,0.1);
+        transition: all .2s;
+    }
+    .stButton>button:hover { 
+        background: #7A72BF;
+    }
+    
+    /* 8. Custom Sidebar Status */
+    .sidebar-status {
+        padding: 5px 10px;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        text-transform: uppercase;
+    }
+    .status-connected { background-color: #D4EDDA; color: #155724; border-left: 4px solid #28A745; }
+    .status-local { background-color: #FFEEDD; color: #856404; border-left: 4px solid #FFC107; }
+    
+    /* 9. Larger Titles for Impact */
+    h1 { color: #1E1E1E; font-weight: 700; margin-bottom: 0.5rem; }
+    h2 { color: #333333; font-weight: 600; margin-top: 2rem;}
+    h3 { color: #5D54A4; font-weight: 500; margin-top: 1rem;}
+
+    /* 10. Breathing Circle Styles */
+    .breathing-circle {
+        width: 100px;
+        height: 100px;
+        background-color: #5D54A4;
+        border-radius: 50%;
+        margin: 50px auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.5rem;
+        font-weight: 700;
+        transition: all 4s ease-in-out;
+    }
+    .breathe-inhale {
+        animation: scaleIn 4s infinite alternate;
+    }
+    .breathe-exhale {
+        animation: scaleOut 6s infinite alternate;
+    }
+    @keyframes scaleIn {
+        from { transform: scale(1); }
+        to { transform: scale(2.5); }
+    }
+    @keyframes scaleOut {
+        from { transform: scale(2.5); }
+        to { transform: scale(1); }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Call the setup function early in the main script flowsetup_page_and_layout()
+
 # ---------- ECE HELPER FUNCTIONS (KEEP THESE) ----------
 
 @st.cache_data
@@ -898,7 +1021,7 @@ def mindful_journaling_panel():
             """, unsafe_allow_html=True)
     else:
         st.info("Your journal is empty. Write your first entry!")
-        
+
 def journal_analysis_panel():
     st.header("Journal Analysis 📊")
     st.markdown("See the data behind your words. This analysis covers all journal and chat entries.")
