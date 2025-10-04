@@ -16,10 +16,8 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from openai import OpenAI
 from openai import APIError
 
-# IMPORTANT: TEMPORARILY COMMENT OUT COMPLEX IMPORTS TO AVOID SPAWN ERROR
-# import matplotlib.pyplot as plt # Keeping this as it might be needed by plotly/pandas, but be aware.
-# from wordcloud import WordCloud # WordCloud is often an issue, so we'll skip it for now.
-# Any specific audio libraries you may have imported (e.g., pyaudio, sounddevice) should be commented out here.
+# TEMPORARILY COMMENT OUT COMPLEX IMPORTS TO AVOID SPAWN ERROR
+# from wordcloud import WordCloud # Still commented out, as it can cause issues.
 
 # ---------- CONSTANTS ----------
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -47,6 +45,26 @@ BADGE_RULES = [
     ("Breathing Master", lambda s: "Breathing Master" in s["streaks"]["badges"]),
     ("Self-Aware", lambda s: len(s["mood_history"]) >= 5 and s["streaks"].get("mood_log", 0) >= 5)
 ]
+
+PHQ9_QUESTIONS = [
+    "1. Little interest or pleasure in doing things?",
+    "2. Feeling down, depressed, or hopeless?",
+    "3. Trouble falling or staying asleep, or sleeping too much?",
+    "4. Feeling tired or having little energy?",
+    "5. Poor appetite or overeating?",
+    "6. Feeling bad about yourself—or that you are a failure or have let yourself or your family down?",
+    "7. Trouble concentrating on things, such as reading the newspaper or watching television?",
+    "8. Moving or speaking so slowly that other people could have noticed? Or the opposite—being so fidgety or restless that you have been moving around a lot more than usual?",
+    "9. Thoughts that you would be better off dead or of hurting yourself in some way?"
+]
+
+PHQ9_INTERPRETATION = {
+    (0, 4): "Minimal to None",
+    (5, 9): "Mild",
+    (10, 14): "Moderate",
+    (15, 19): "Moderately Severe",
+    (20, 27): "Severe"
+}
 
 # ---------- Streamlit page config ----------
 st.set_page_config(
@@ -90,7 +108,6 @@ def generate_simulated_physiological_data(current_time_ms):
     Simulates noisy PPG (Heart Rate) and GSR (Stress) data.
     """
     
-    # Ensure current_time_ms is float for sin function
     time_sec = current_time_ms / 1000.0 
     
     # Base HR (BPM) that gently changes over time (70-100 BPM)
@@ -107,8 +124,8 @@ def generate_simulated_physiological_data(current_time_ms):
     
     # GSR/Stress Simulation (correlated with base HR and overall phq9 score)
     base_gsr = 0.5 * base_hr / 100.0
-    # FIX: Ensure phq9_score is handled safely if None
     phq9_score = st.session_state.get("phq9_score") or 0
+    # Normalize score by max possible (27)
     gsr_value = 1.0 + base_gsr + 0.5 * np.random.rand() * (phq9_score / 27.0)
     
     return {
@@ -123,10 +140,10 @@ def setup_analyzer():
     return SentimentIntensityAnalyzer()
 
 @st.cache_resource(show_spinner=False)
-def setup_ai_model(api_key: str):
+def setup_ai_model(api_key: str, history: list):
     """Lazy configure OpenAI client for OpenRouter."""
     if not api_key:
-        return None, False, None
+        return None, False, history # Return existing history if setup fails
     try:
         client = OpenAI(
             api_key=api_key,
@@ -138,20 +155,17 @@ You are 'The Youth Wellness Buddy,' an AI designed for teens.
 Your primary goal is to provide non-judgemental, empathetic, and encouraging support. 
 Your personality is warm, slightly informal, and very supportive.
 """
-        
-        history = [{"role": "system", "content": system_instruction}]
-
-        if "chat_messages" in st.session_state:
-            for msg in st.session_state["chat_messages"]:
-                if msg["role"] in ["user", "assistant"]:
-                     history.append(msg)
+        # Append system instruction to history if it's the first element
+        if not history or history[0].get("role") != "system":
+            history.insert(0, {"role": "system", "content": system_instruction})
         
         if len(history) <= 1:
              history.append({"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"})
 
         return client, True, history
     except Exception:
-        return None, False, None
+        return None, False, history
+
 
 @st.cache_resource(show_spinner=False)
 def setup_supabase_client(url: str, key: str):
@@ -165,7 +179,7 @@ def setup_supabase_client(url: str, key: str):
     except Exception:
         return None, False
 
-# ---------- Session state defaults (WITH ROBUST SECRET LOADING FIX) ----------
+# ---------- Session state defaults (CLEANED UP) ----------
 if "page" not in st.session_state:
     st.session_state["page"] = "Home"
 
@@ -175,18 +189,21 @@ if "physiological_data" not in st.session_state:
     st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level"])
 
 if "_ai_model" not in st.session_state:
-    # --- UPGRADED ROBUST SECRET LOADING ---
+    # --- ROBUST SECRET LOADING ---
     raw_key = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
-    # This line safely cleans the key regardless of quotes or format.
     OPENROUTER_API_KEY = raw_key.strip().strip('"') if isinstance(raw_key, str) and raw_key else None
     
-    _ai_client_obj, _ai_available, _chat_history_list = setup_ai_model(OPENROUTER_API_KEY)
+    # Initialize chat_messages safely
+    if "chat_messages" not in st.session_state:
+        st.session_state["chat_messages"] = []
+    
+    _ai_client_obj, _ai_available, _chat_history_list = setup_ai_model(OPENROUTER_API_KEY, st.session_state["chat_messages"])
     st.session_state["_ai_model"] = _ai_client_obj 
     st.session_state["_ai_available"] = _ai_available
-    st.session_state["chat_messages"] = _chat_history_list if _ai_available else [{"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"}]
+    st.session_state["chat_messages"] = _chat_history_list
     
 if "_supabase_client_obj" not in st.session_state:
-    # --- UPGRADED ROBUST SECRET LOADING ---
+    # --- ROBUST SECRET LOADING ---
     raw_url = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
     raw_key = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
 
@@ -221,9 +238,8 @@ if "phq9_score" not in st.session_state:
 if "phq9_interpretation" not in st.session_state:
     st.session_state["phq9_interpretation"] = None
 
-if "chat_messages" not in st.session_state:
-    st.session_state["chat_messages"] = [{"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"}]
-
+if "breathing_state" not in st.session_state:
+    st.session_state["breathing_state"] = "stop" # 'stop', 'running', 'finished'
 
 analyzer = setup_analyzer()
 
@@ -238,7 +254,6 @@ def clean_text_for_ai(text: str) -> str:
 def safe_generate(prompt: str, max_tokens: int = 300):
     """
     Generate text via OpenRouter, using the system message and current history.
-    (Function body remains the same)
     """
     prompt_lower = prompt.lower()
     
@@ -264,7 +279,8 @@ def safe_generate(prompt: str, max_tokens: int = 300):
         messages_for_api = st.session_state.chat_messages
         prompt_clean = clean_text_for_ai(prompt)
 
-        if messages_for_api[-1]["content"] != prompt_clean:
+        # Append new user message before sending to API
+        if messages_for_api[-1]["content"] != prompt_clean or messages_for_api[-1]["role"] != "user":
              messages_for_api.append({"role": "user", "content": prompt_clean})
 
         try:
@@ -279,7 +295,6 @@ def safe_generate(prompt: str, max_tokens: int = 300):
                 return resp.choices[0].message.content
             
         except APIError:
-            # Re-enable error message if running on cloud and API key is set
             if st.session_state.get("_ai_available"):
                  st.error("OpenRouter API Error. Please check your key or try a different model.")
             pass
@@ -304,28 +319,6 @@ def get_all_user_text() -> str:
     parts += [e.get("text","") for e in st.session_state["daily_journal"] if e.get("text")]
     parts += [m.get("content","") for m in st.session_state["chat_messages"] if m.get("role") == "user" and m.get("content")]
     return " ".join(parts).strip()
-
-# IMPORTANT: TEMPORARILY COMMENTING OUT WORDCLOUD FUNCTION TO AVOID SPAWN ERROR
-def generate_wordcloud_figure_if_possible(text: str):
-    """Placeholder for the WordCloud function to prevent import issues on deploy."""
-    return None
-    # if not text or not text.strip():
-    #     return None
-    # try:
-    #     from wordcloud import WordCloud, STOPWORDS # Need this import if uncommenting
-    #     stopwords = set(STOPWORDS)
-    #     stopwords.update(['the', 'and', 'to', 'a', 'of', 'in', 'is', 'it', 'I', 'my', 'me', 'that', 'this', 'for', 'was', 'with'])
-    #     wc = WordCloud(
-    #         width=800, height=400, background_color="#f7f9fb", stopwords=stopwords, 
-    #         max_words=100, contour_width=3, contour_color='#4a90e2'
-    #     ).generate(text)
-    #     import matplotlib.pyplot as plt # Need this import if uncommenting
-    #     fig, ax = plt.subplots(figsize=(8,4))
-    #     ax.imshow(wc, interpolation="bilinear")
-    #     ax.axis("off")
-    #     return fig
-    # except Exception:
-    #     return None
 
 
 # ---------- Supabase helpers (Retained) ----------
@@ -371,7 +364,7 @@ def load_journal_db(user_id, supabase_client):
     except Exception:
         return []
 
-# ---------- UI style (UPGRADED FOR MODERN LIGHT CARD LOOK) ----------
+# ---------- UI style (RETAINED) ----------
 st.markdown(
     """
     <style>
@@ -440,15 +433,44 @@ st.markdown(
     h1 { color: #1E1E1E; font-weight: 700; margin-bottom: 0.5rem; }
     h2 { color: #333333; font-weight: 600; margin-top: 2rem;}
     h3 { color: #5D54A4; font-weight: 500; margin-top: 1rem;}
+
+    /* Breathing Circle Styles */
+    .breathing-circle {
+        width: 100px;
+        height: 100px;
+        background-color: #5D54A4;
+        border-radius: 50%;
+        margin: 50px auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.5rem;
+        font-weight: 700;
+        transition: all 4s ease-in-out;
+    }
+    .breathe-inhale {
+        animation: scaleIn 4s infinite alternate;
+    }
+    .breathe-exhale {
+        animation: scaleOut 6s infinite alternate;
+    }
+    @keyframes scaleIn {
+        from { transform: scale(1); }
+        to { transform: scale(2.5); }
+    }
+    @keyframes scaleOut {
+        from { transform: scale(2.5); }
+        to { transform: scale(1); }
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# Sidebar Navigation and Status
+# Sidebar Navigation and Status (RETAINED)
 st.sidebar.markdown("### Status")
 
-# Custom Status Blocks
 ai_status_class = "status-connected" if st.session_state.get("_ai_available") else "status-local"
 db_status_class = "status-connected" if st.session_state.get("_db_connected") else "status-local"
 
@@ -483,9 +505,8 @@ st.session_state["page"] = st.sidebar.radio(
 )
 
 
-# ---------- Sidebar: Auth (Retained) ----------
+# ---------- Sidebar: Auth (RETAINED) ----------
 def sidebar_auth():
-    # ... (function body remains the same)
     st.sidebar.markdown("---")
     st.sidebar.header("Account")
     if not st.session_state.get("logged_in"):
@@ -530,14 +551,17 @@ def sidebar_auth():
         st.sidebar.markdown(f"**{st.session_state.get('user_email')}**")
         if st.sidebar.button("Logout"):
             for key in ["logged_in", "user_id", "user_email", "phq9_score", "phq9_interpretation", "kalman_state"]:
-                st.session_state[key] = None
+                if key in st.session_state:
+                    st.session_state[key] = None
+            
             st.session_state["daily_journal"] = []
             st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level"])
             st.session_state["kalman_state"] = initialize_kalman()
-            st.session_state.chat_messages = []
             
-            OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
-            _ai_client_obj, _ai_available, _chat_history_list = setup_ai_model(OPENROUTER_API_KEY)
+            # Reset AI setup logic
+            raw_key = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+            OPENROUTER_API_KEY = raw_key.strip().strip('"') if isinstance(raw_key, str) and raw_key else None
+            _ai_client_obj, _ai_available, _chat_history_list = setup_ai_model(OPENROUTER_API_KEY, [])
             st.session_state["_ai_model"] = _ai_client_obj
             st.session_state["_ai_available"] = _ai_available
             st.session_state["chat_messages"] = _chat_history_list if _ai_available else [{"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"}]
@@ -550,17 +574,13 @@ sidebar_auth()
 
 # ---------- Panels (MODIFIED FOR UX) ----------
 def homepage_panel():
-    # Use HTML for the main title to ensure font is applied
     st.markdown(f"<h1>Your Wellness Sanctuary <span style='color: #5D54A4;'>🧠</span></h1>", unsafe_allow_html=True)
     st.markdown("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
     
     st.markdown("---")
     
     # --- Row 1: Daily Inspiration Card ---
-    
-    # Daily Inspiration Card
     with st.container():
-        # Use a distinct color for the accent border
         st.markdown("<div class='card' style='border-left: 8px solid #FFC107;'>", unsafe_allow_html=True)
         st.markdown("<h3>Daily Inspiration ✨</h3>")
         st.markdown(f"**<span style='font-size: 1.25rem; font-style: italic;'>“{random.choice(QUOTES)}”</span>**", unsafe_allow_html=True)
@@ -570,11 +590,10 @@ def homepage_panel():
     st.markdown("---")
     
     # --- Row 2: Quick Actions (Similar to the mobile app's icon buttons) ---
-    st.markdown("<h2>Quick Actions</h2>")
+    st.markdown("<h2>Quick Actions</h2>", unsafe_allow_html=True)
     
     c1, c2, c3, c4 = st.columns(4)
     
-    # The buttons now inherit the smooth, rounded, purple styling from the custom CSS
     with c1:
         if st.button("🧘‍♀️ Breathe", key="home_breath_btn", use_container_width=True):
             st.session_state["page"] = "Mindful Breathing"
@@ -595,7 +614,7 @@ def homepage_panel():
     st.markdown("---")
     
     # --- Row 3: Feature Cards (Mimicking the spaced-out, illustrated cards) ---
-    st.markdown("<h2>Your Toolkit</h2>")
+    st.markdown("<h2>Your Toolkit</h2>", unsafe_allow_html=True)
     
     col_mood, col_journal = st.columns(2)
 
@@ -604,7 +623,7 @@ def homepage_panel():
         <div class='card' style='border-left: 8px solid #5D54A4; height: 180px;'>
             <h3 style='margin-top:0;'>Mood Tracker & Analysis 📈</h3>
             <p style='font-size: 0.95rem;'>Log your daily emotional state and see your personal timeline evolve. Earn badges for consistency.</p>
-            <div style='text-align: right;'><a href='#' onclick="window.parent.document.querySelector('input[value=\'📈 Mood Tracker\']').click(); return false;" style='color:#5D54A4; font-weight: 600; text-decoration: none;'>View Dashboard →</a></div>
+            <div style='text-align: right;'><a href='#' onclick="window.parent.document.querySelector('input[value=\\'📈 Mood Tracker\\']').click(); return false;" style='color:#5D54A4; font-weight: 600; text-decoration: none;'>View Dashboard →</a></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -613,7 +632,7 @@ def homepage_panel():
         <div class='card' style='border-left: 8px solid #28A745; height: 180px;'>
             <h3 style='margin-top:0;'>Mindful Journaling 📝</h3>
             <p style='font-size: 0.95rem;'>A private space for reflection. The AI analyzes your entries to provide insights and sentiment scores.</p>
-            <div style='text-align: right;'><a href='#' onclick="window.parent.document.querySelector('input[value=\'📝 Mindful Journaling\']').click(); return false;" style='color:#28A745; font-weight: 600; text-decoration: none;'>Start Writing →</a></div>
+            <div style='text-align: right;'><a href='#' onclick="window.parent.document.querySelector('input[value=\\'📝 Mindful Journaling\\']').click(); return false;" style='color:#28A745; font-weight: 600; text-decoration: none;'>Start Writing →</a></div>
         </div>
         """, unsafe_allow_html=True)
         
@@ -623,7 +642,7 @@ def homepage_panel():
         <div class='card' style='border-left: 8px solid #FF5733;'>
             <h3 style='margin-top:0;'>IoT Monitoring (ECE Demo) ⚙️</h3>
             <p style='font-size: 0.95rem;'>Simulated real-time physiological data (Heart Rate/Stress) using a Kalman Filter demonstration.</p>
-            <div style='text-align: right;'><a href='#' onclick="window.parent.document.querySelector('input[value=\'⚙️ IoT Dashboard (ECE)\']').click(); return false;" style='color:#FF5733; font-weight: 600; text-decoration: none;'>Go to Dashboard →</a></div>
+            <div style='text-align: right;'><a href='#' onclick="window.parent.document.querySelector('input[value=\\'⚙️ IoT Dashboard (ECE)\\']').click(); return false;" style='color:#FF5733; font-weight: 600; text-decoration: none;'>Go to Dashboard →</a></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -632,7 +651,6 @@ def mood_tracker_panel():
     st.header("Daily Mood Tracker 📈")
     
     with st.container():
-        # Inner content of the mood tracker card
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         col1, col2 = st.columns([3,1])
         with col1:
@@ -643,7 +661,7 @@ def mood_tracker_panel():
                 entry = {"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "mood": mood, "note": note}
                 st.session_state["mood_history"].append(entry)
 
-                # Streak Logic (retained)
+                # Streak Logic
                 last_date = st.session_state["streaks"].get("last_mood_date")
                 today = datetime.now().date()
                 last_dt = None
@@ -663,7 +681,7 @@ def mood_tracker_panel():
 
                 st.success("Mood logged. Tiny step, big impact. ✨")
 
-                # Badge check (retained)
+                # Badge check
                 for name, rule in BADGE_RULES:
                     try:
                         state_subset = {"mood_history": st.session_state["mood_history"], "streaks": st.session_state["streaks"]}
@@ -709,7 +727,6 @@ def ai_chat_panel():
     st.header("AI Chat 💬")
     st.markdown("Your compassionate AI buddy. Start chatting, and I’ll listen.")
 
-    # Use a container with fixed height and scrolling for a chat-app feel
     with st.container(height=500, border=True):
         for message in st.session_state.chat_messages:
             if message["role"] in ["user", "assistant"]:
@@ -718,7 +735,10 @@ def ai_chat_panel():
 
     prompt = st.chat_input("What's on your mind?")
     if prompt:
-        st.session_state.chat_messages.append({"role": "user", "content": prompt})
+        
+        # Check if the last message was already this prompt (to prevent double-append on rerun)
+        if not st.session_state.chat_messages or st.session_state.chat_messages[-1]["content"] != prompt or st.session_state.chat_messages[-1]["role"] != "user":
+            st.session_state.chat_messages.append({"role": "user", "content": prompt})
         
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -727,343 +747,419 @@ def ai_chat_panel():
             with st.spinner("Listening closely..."):
                 ai_response = safe_generate(prompt)
                 st.markdown(ai_response)
-                st.session_state.chat_messages.append({"role": "assistant", "content": ai_response})
+                
+                # Check if the last message was already this response (to prevent double-append on rerun)
+                if not st.session_state.chat_messages or st.session_state.chat_messages[-1]["content"] != ai_response or st.session_state.chat_messages[-1]["role"] != "assistant":
+                    st.session_state.chat_messages.append({"role": "assistant", "content": ai_response})
                         
         st.rerun()
 
 def mindful_breathing_panel():
-    # TEMPORARILY DISABLED FUNCTION BODY TO AVOID SPAWN ERROR (Audio/System Dependency)
     st.header("Mindful Breathing 🧘‍♀️")
-    st.markdown("---")
-    st.error("⚠️ **This feature is temporarily disabled** due to a conflict with system dependencies during deployment. Please try again later.")
     st.markdown("Follow the prompts for 3 cycles: **Inhale (4s) — Hold (4s) — Exhale (6s)**. Breathe deep and recenter.")
     
-    # Placeholder for the actual breathing logic
-    if st.button("Start Breathing (Disabled)", disabled=True, use_container_width=True):
-         pass
-
-    # Here is where the incomplete code was. I'm leaving it as a placeholder:
-    # if "breathing_state" not in st.session_state:
-    #     st.session_state["breathing_state"] = {"running": False, "start_time": None, "cycles_done": 0}
-
-    # bs = st.session_state["breathing_state"]
     
-    # # ... (rest of the original complex logic)
-    
+    if st.session_state["breathing_state"] == "stop":
+        if st.button("Start 3-Cycle Breath", key="start_breathing_btn", use_container_width=True):
+            st.session_state["breathing_state"] = "running"
+            st.rerun()
+        st.markdown("<div class='card' style='text-align:center;'>Tap start to begin the exercise.</div>", unsafe_allow_html=True)
+
+    if st.session_state["breathing_state"] == "running":
+        
+        placeholder = st.empty()
+        
+        # Total time is 3 cycles * (4 + 4 + 6) = 42 seconds
+        # Use st.progress to track the full progress
+        full_progress_bar = st.progress(0, text="0 / 42 seconds complete...")
+        
+        for cycle in range(1, 4):
+            # Inhale (4s)
+            with placeholder.container():
+                st.markdown(f"<h2>Cycle {cycle}/3: <span style='color:#28A745;'>INHALE DEEPLY</span></h2>", unsafe_allow_html=True)
+                st.markdown("<div class='breathing-circle breathe-inhale' style='background-color:#28A745;'>INHALE</div>", unsafe_allow_html=True)
+            time.sleep(4)
+            full_progress_bar.progress(int((cycle-1) * 14 + 4) / 42.0, text=f"{(cycle-1) * 14 + 4} / 42 seconds complete... (Holding)")
+
+            # Hold (4s)
+            with placeholder.container():
+                st.markdown(f"<h2>Cycle {cycle}/3: <span style='color:#FFC107;'>HOLD</span></h2>", unsafe_allow_html=True)
+                st.markdown("<div class='breathing-circle' style='background-color:#FFC107;'>HOLD</div>", unsafe_allow_html=True)
+            time.sleep(4)
+            full_progress_bar.progress(int((cycle-1) * 14 + 8) / 42.0, text=f"{(cycle-1) * 14 + 8} / 42 seconds complete... (Exhaling)")
+
+            # Exhale (6s)
+            with placeholder.container():
+                st.markdown(f"<h2>Cycle {cycle}/3: <span style='color:#FF5733;'>EXHALE SLOWLY</span></h2>", unsafe_allow_html=True)
+                st.markdown("<div class='breathing-circle breathe-exhale' style='background-color:#FF5733;'>EXHALE</div>", unsafe_allow_html=True)
+            time.sleep(6)
+            full_progress_bar.progress(int(cycle * 14) / 42.0, text=f"{cycle * 14} / 42 seconds complete...")
+
+
+        st.session_state["breathing_state"] = "finished"
+        placeholder.empty()
+        st.rerun()
+
+    if st.session_state["breathing_state"] == "finished":
+        st.success("✅ **Breathing exercise complete!** You finished 3 cycles and took a moment for yourself.")
+        if st.button("Start Again", key="restart_breathing_btn", use_container_width=True):
+            st.session_state["breathing_state"] = "stop"
+            st.rerun()
+        if st.button("Go Home", key="finish_breathing_btn", use_container_width=True):
+            st.session_state["page"] = "Home"
+            st.session_state["breathing_state"] = "stop"
+            st.rerun()
+
 def mindful_journaling_panel():
     st.header("Mindful Journaling 📝")
-    st.markdown("Take a few minutes to write down your thoughts, feelings, or what happened today. This is for your eyes only.")
+    st.markdown("Use this private space to reflect on your day, thoughts, and emotions.")
     
     with st.container():
-        st.markdown("<div class='card' style='border-left: 5px solid #28A745;'>", unsafe_allow_html=True)
-        new_entry = st.text_area("What's on your mind?", key="journal_text_area", height=200)
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        entry_text = st.text_area("What's on your mind right now?", height=250, key="journal_input")
         
-        if st.button("Save Entry & Analyze Sentiment", key="save_journal_btn"):
-            if new_entry:
-                sentiment = sentiment_compound(new_entry)
-                entry = {
+        if st.button("Submit Entry & Analyze", key="submit_journal_btn", use_container_width=True):
+            if entry_text:
+                sentiment_score = sentiment_compound(entry_text)
+                
+                new_entry = {
                     "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
-                    "text": new_entry, 
-                    "sentiment": sentiment
+                    "text": entry_text, 
+                    "sentiment": sentiment_score
                 }
-                st.session_state["daily_journal"].insert(0, entry)
+                st.session_state["daily_journal"].append(new_entry)
                 
-                # Save to database if connected
-                if st.session_state.get("_db_connected") and st.session_state.get("user_id"):
-                    if save_journal_db(st.session_state["user_id"], new_entry, sentiment):
-                        st.success("Entry saved and synced! Sentiment analyzed.")
-                    else:
-                        st.warning("Entry saved locally. DB sync failed.")
+                # Save to Supabase
+                if st.session_state.get("logged_in") and st.session_state.get("_db_connected"):
+                    save_journal_db(st.session_state["user_id"], entry_text, sentiment_score)
+                    st.success("Entry saved to Supabase! 👍")
                 else:
-                    st.info("Entry saved locally (not synced). Sentiment analyzed.")
+                    st.info("Entry saved locally. Log in to save permanently.")
                 
-                # Clear the text area and rerun
-                st.session_state["journal_text_area"] = ""
+                # --- CBT Enhancement: Simple AI Reframing ---
+                if st.session_state.get("_ai_available") and sentiment_score < -0.2:
+                    with st.spinner("AI is generating a helpful reframing thought..."):
+                        cbt_prompt = f"The user just wrote a journal entry with a negative sentiment (-0.2 or lower). Generate one single, brief, non-clinical 'Coping Card' thought (cognitive reframing statement) based on the user's entry that is empathetic, validates their feeling, and offers a slightly more constructive perspective. The entry was: '{entry_text[:200]}...'"
+                        reframing_thought = safe_generate(cbt_prompt, max_tokens=100)
+                        
+                        st.session_state["last_reframing_card"] = reframing_thought
+                        st.session_state["page"] = "Journal Analysis" # Send them to see the analysis
+                        st.rerun()
+                
+                st.session_state["page"] = "Journal Analysis"
                 st.rerun()
             else:
-                st.warning("The journal entry is empty.")
+                st.warning("Please write something before submitting.")
+                
         st.markdown("</div>", unsafe_allow_html=True)
         
     st.markdown("---")
-    st.subheader("Recent Entries")
     
-    for entry in st.session_state["daily_journal"][:3]:
-        sentiment_label = "Positive" if entry['sentiment'] > 0.05 else ("Negative" if entry['sentiment'] < -0.05 else "Neutral")
-        sentiment_color = "#28a745" if sentiment_label == "Positive" else ("#dc3545" if sentiment_label == "Negative" else "#ffc107")
+    st.subheader("Previous Entries")
+    if st.session_state["daily_journal"]:
+        df_journal = pd.DataFrame(st.session_state["daily_journal"])
         
-        st.markdown(f"""
-        <div class='card' style='padding: 15px; margin-bottom: 10px; border-left: 5px solid {sentiment_color};'>
-            <p style='font-size: 0.8rem; color: #888;'>{entry['date']}</p>
-            <p style='margin-top: 5px;'>{entry['text'][:200]}...</p>
-            <p style='font-size: 0.9rem; font-weight: 600; color: {sentiment_color};'>Sentiment: {sentiment_label} ({entry['sentiment']:.2f})</p>
-        </div>
-        """, unsafe_allow_html=True)
+        for index, row in df_journal.sort_values(by="date", ascending=False).iterrows():
+            date_str = pd.to_datetime(row["date"]).strftime("%Y-%m-%d %H:%M")
+            sentiment_color = "red" if row["sentiment"] < -0.1 else ("green" if row["sentiment"] > 0.1 else "gray")
+            
+            st.markdown(f"""
+            <div class='card' style='padding: 15px; border-left: 5px solid {sentiment_color};'>
+                <p style='font-size: 0.8rem; color: #777;'>{date_str}</p>
+                <p style='font-size: 1rem; margin-top: 5px;'>{row["text"]}</p>
+                <p style='font-size: 0.8rem; color: #5D54A4; text-align: right;'>Sentiment: <b>{row["sentiment"]:.2f}</b></p>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("Your journal is empty. Write your first entry!")
 
 
 def journal_analysis_panel():
     st.header("Journal Analysis 📊")
-    st.markdown("Gain insights into your long-term emotional patterns from your entries and chat history.")
+    st.markdown("See the data behind your words. This analysis covers all journal and chat entries.")
     
     all_text = get_all_user_text()
-    if not st.session_state["daily_journal"] and not all_text.strip():
-        st.info("Start journaling or chatting to generate your analysis!")
-        return
     
-    # Sentiment Over Time Plot
+    # --- Show Reframing Card if just generated ---
+    if st.session_state.get("last_reframing_card"):
+        st.markdown(f"""
+        <div class='card' style='border-left: 8px solid #5D54A4;'>
+            <h3 style='margin-top:0;'>Your Coping Card (Reframing) 💡</h3>
+            <p style='font-size: 1.1rem; font-style: italic; color: #1E1E1E;'>"{st.session_state["last_reframing_card"]}"</p>
+        </div>
+        """, unsafe_allow_html=True)
+        # Clear after showing once
+        st.session_state["last_reframing_card"] = None 
+        st.markdown("---")
+
+
+    if not st.session_state["daily_journal"] and not all_text:
+        st.warning("Start journaling or chatting with the AI to generate analysis data.")
+        return
+
+    # 1. Overall Sentiment Metric
+    avg_journal_sentiment = 0.0
+    if st.session_state["daily_journal"]:
+        df_journal = pd.DataFrame(st.session_state["daily_journal"])
+        avg_journal_sentiment = df_journal["sentiment"].mean()
+    
+    col_metric, col_word_count = st.columns(2)
+    
+    with col_metric:
+        sentiment_label = "Positive" if avg_journal_sentiment > 0.1 else ("Negative" if avg_journal_sentiment < -0.1 else "Neutral")
+        sentiment_delta = f"{avg_journal_sentiment:.2f}"
+        st.metric(
+            label="Average Sentiment Score (Journal)", 
+            value=sentiment_label, 
+            delta=sentiment_delta,
+            delta_color="normal" if avg_journal_sentiment > 0 else "inverse"
+        )
+        st.markdown(f"**Total Entries:** {len(st.session_state['daily_journal'])}")
+
+    with col_word_count:
+        st.metric("Total Words Analyzed", f"{len(all_text.split()):,}")
+
+    st.markdown("---")
+
+    # 2. Sentiment History Plot
     st.subheader("Sentiment Trend")
     if st.session_state["daily_journal"]:
-        df = pd.DataFrame(st.session_state["daily_journal"]).copy()
-        df['date'] = pd.to_datetime(df['date'])
-        df = df.sort_values('date') 
-        fig = px.line(df, x='date', y='sentiment', title="Journal Sentiment Over Time", markers=True,
-                      color_discrete_sequence=['#5D54A4'])
-        fig.update_layout(yaxis_range=[-1.0, 1.0])
+        df_journal_plot = pd.DataFrame(st.session_state["daily_journal"]).copy()
+        df_journal_plot['date'] = pd.to_datetime(df_journal_plot['date'])
+        
+        fig = px.bar(
+            df_journal_plot, 
+            x='date', 
+            y='sentiment', 
+            title='Journal Sentiment Over Time',
+            color='sentiment',
+            color_continuous_scale=px.colors.diverging.RdYlGn, # Red-Yellow-Green scale
+            template="plotly_white"
+        )
+        fig.update_layout(yaxis_range=[-1, 1])
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("No saved journal entries for trend analysis.")
+        st.info("Write a few journal entries to see your sentiment history!")
 
-    # Word Cloud (DISABLED FOR DEPLOYMENT)
-    st.subheader("Common Themes (Word Cloud)")
+
+    # 3. Word Cloud (Still commented out to ensure stability)
+    # fig_wc = generate_wordcloud_figure_if_possible(all_text)
+    # if fig_wc:
+    #     st.subheader("Most Used Words (Word Cloud)")
+    #     st.pyplot(fig_wc)
+    # else:
+    #     st.info("Word Cloud feature is currently disabled to ensure stable deployment.")
+        
     
-    wordcloud_fig = generate_wordcloud_figure_if_possible(all_text)
-    if wordcloud_fig:
-        # If the function were enabled and worked:
-        # st.pyplot(wordcloud_fig)
-        pass 
-    else:
-        st.info("Word Cloud feature is temporarily disabled due to deployment dependencies.")
-
-    # AI Summary
-    st.subheader("AI Insight Summary")
-    if st.session_state.get("_ai_available"):
-        summary_btn = st.button("Generate Summary of All Text", key="ai_summary_btn")
-        if summary_btn:
-            with st.spinner("AI is analyzing hundreds of thoughts..."):
-                analysis_prompt = f"""
-                Analyze the following collection of the user's journal entries and chat messages. 
-                Identify the 3 most common themes, the average emotional tone (positive, negative, or mixed), 
-                and provide one gentle, actionable suggestion for the user based on the content.
-                ---
-                Content: "{all_text[:5000]}..."
-                """
-                
-                # Use a specific, short history for this analysis call to save tokens
-                messages_for_analysis = [{"role": "system", "content": "You are a professional mood analyst. Provide a brief, bulleted analysis of the user's emotions and themes."}]
-                messages_for_analysis.append({"role": "user", "content": analysis_prompt})
-                
-                try:
-                    client = st.session_state["_ai_model"]
-                    resp = client.chat.completions.create(
-                        model=OPENROUTER_MODEL_NAME,
-                        messages=messages_for_analysis,
-                        max_tokens=500,
-                        temperature=0.3
-                    )
-                    st.markdown("<div class='card'>", unsafe_allow_html=True)
-                    st.markdown(resp.choices[0].message.content)
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-                except Exception:
-                    st.error("Could not generate AI summary. Check API connection.")
-    else:
-        st.warning("AI is not available to generate a summary.")
-
-
 def iot_dashboard_panel():
     st.header("IoT Dashboard (ECE Demo) ⚙️")
     st.markdown("Real-time simulated physiological data monitoring and Kalman filter demonstration.")
     
-    placeholder = st.empty()
-
-    if "sim_running" not in st.session_state:
-        st.session_state["sim_running"] = False
+    # ------------------
+    # Data Simulation Logic
+    # ------------------
+    current_time_ms = int(time.time() * 1000)
+    data = generate_simulated_physiological_data(current_time_ms)
     
-    col_btn_sim, col_btn_reset = st.columns(2)
-    with col_btn_sim:
-        if st.session_state["sim_running"]:
-            if st.button("Stop Simulation", key="stop_sim_btn", use_container_width=True):
-                st.session_state["sim_running"] = False
-                st.rerun()
-        else:
-            if st.button("Start Simulation", key="start_sim_btn", use_container_width=True):
-                st.session_state["sim_running"] = True
-                st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level"])
-                st.session_state["kalman_state"] = initialize_kalman()
-                st.rerun()
-    with col_btn_reset:
-        if st.button("Reset Data", key="reset_data_btn", use_container_width=True):
-            st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level"])
-            st.session_state["kalman_state"] = initialize_kalman()
-            st.rerun()
+    # 1. Kalman Filter Application (HR)
+    # The raw PPG signal is the measurement (z_meas)
+    filtered_hr, st.session_state["kalman_state"] = kalman_filter_simple(
+        data["raw_ppg_signal"], 
+        st.session_state["kalman_state"]
+    )
+    data["filtered_hr"] = filtered_hr
+    
+    # Append new data to the session state DataFrame
+    new_row = pd.DataFrame([data])
+    st.session_state["physiological_data"] = pd.concat([st.session_state["physiological_data"], new_row], ignore_index=True)
+    
+    # Keep the DataFrame size manageable
+    max_rows = 150
+    if len(st.session_state["physiological_data"]) > max_rows:
+        st.session_state["physiological_data"] = st.session_state["physiological_data"].iloc[-max_rows:]
+        
+    # ------------------
+    # Dashboard Display
+    # ------------------
+    
+    col_hr, col_gsr = st.columns(2)
+    
+    with col_hr:
+        st.markdown(f"<h2>Filtered Heart Rate (BPM)</h2>", unsafe_allow_html=True)
+        st.metric(label="Filtered HR", value=f"{filtered_hr:.1f}", delta_color="off")
+    
+    with col_gsr:
+        st.markdown(f"<h2>GSR Stress Level</h2>", unsafe_allow_html=True)
+        st.metric(label="GSR Stress", value=f"{data['gsr_stress_level']:.2f}", delta_color="off")
+    
+    st.markdown("---")
+    
+    st.subheader("Heart Rate: Raw vs. Kalman Filtered")
+    
+    # Prepare data for plotting
+    df_plot = st.session_state["physiological_data"][["time_ms", "raw_ppg_signal", "filtered_hr"]].melt(
+        id_vars=['time_ms'], var_name='variable', value_name='BPM'
+    )
+    
+    fig = px.line(df_plot, x='time_ms', y='BPM', color='variable',
+                  line_dash='variable',
+                  color_discrete_map={'raw_ppg_signal': '#FF5733', 'filtered_hr': '#5D54A4'},
+                  labels={'time_ms': 'Time', 'BPM': 'BPM'})
+    fig.update_layout(legend_title_text='Signal Type')
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Automatic refresh
+    time.sleep(1)
+    st.rerun()
 
 
-    if st.session_state["sim_running"]:
-        with placeholder.container():
-            st.subheader("Live Vitals")
-            
-            # 1. Generate new data
-            current_time = int(time.time() * 1000)
-            data_point = generate_simulated_physiological_data(current_time)
-            
-            # 2. Apply Kalman Filter
-            hr_est, st.session_state["kalman_state"] = kalman_filter_simple(data_point["raw_ppg_signal"], st.session_state["kalman_state"])
-            data_point["filtered_hr"] = hr_est
-
-            # 3. Append to DataFrame (keeping only the last 100 points for performance)
-            new_df = pd.DataFrame([data_point])
-            st.session_state["physiological_data"] = pd.concat([st.session_state["physiological_data"], new_df], ignore_index=True).tail(100)
-            
-            df = st.session_state["physiological_data"]
-
-            # 4. Display Metrics
-            col_hr, col_stress = st.columns(2)
-            col_hr.metric("Filtered Heart Rate (BPM)", f"{hr_est:.1f}")
-            col_stress.metric("GSR Stress Level", f"{data_point['gsr_stress_level']:.2f}")
-
-            # 5. Plotting (Heart Rate)
-            fig_hr = px.line(df, x='time_ms', y=['raw_ppg_signal', 'filtered_hr'], 
-                             title='Heart Rate: Raw vs. Kalman Filtered',
-                             labels={'value': 'BPM', 'time_ms': 'Time (ms)'},
-                             color_discrete_map={'raw_ppg_signal': '#E91E63', 'filtered_hr': '#5D54A4'})
-            st.plotly_chart(fig_hr, use_container_width=True)
-
-            # 6. Plotting (GSR)
-            fig_gsr = px.line(df, x='time_ms', y='gsr_stress_level', 
-                             title='GSR (Stress) Level',
-                             labels={'value': 'Stress Index', 'time_ms': 'Time (ms)'},
-                             color_discrete_sequence=['#FFC107'])
-            st.plotly_chart(fig_gsr, use_container_width=True)
-
-        time.sleep(0.5)
-        st.rerun()
-    elif not st.session_state["physiological_data"].empty:
-        with placeholder.container():
-             st.subheader("Last Session Summary")
-             df = st.session_state["physiological_data"]
-             max_hr = df['filtered_hr'].max()
-             avg_hr = df['filtered_hr'].mean()
-             max_gsr = df['gsr_stress_level'].max()
-             
-             col_hr, col_stress = st.columns(2)
-             col_hr.metric("Avg HR (BPM)", f"{avg_hr:.1f}")
-             col_stress.metric("Max Stress Index", f"{max_gsr:.2f}")
-             
-             st.info(f"Summary: Max Heart Rate reached {max_hr:.1f} BPM. Consider a mindful break!")
-             
-             fig_hr = px.line(df, x='time_ms', y=['raw_ppg_signal', 'filtered_hr'], title='Heart Rate: Raw vs. Kalman Filtered', color_discrete_map={'raw_ppg_signal': '#E91E63', 'filtered_hr': '#5D54A4'})
-             st.plotly_chart(fig_hr, use_container_width=True)
-    else:
-        st.info("Press 'Start Simulation' to begin live physiological data monitoring.")
-
-
-# Placeholder functions for PHQ-9 and Summary
 def wellness_checkin_panel():
-    st.header("Wellness Check-in (PHQ-9) 🩺")
-    st.markdown("This check-in is based on the PHQ-9, a common screening tool for depression. Your answers are private.")
+    st.header("Wellness Check-in 🩺")
+    st.markdown("This section helps screen for symptoms of depression over the **last two weeks**. This is a simplified version of the PHQ-9 (Patient Health Questionnaire-9).")
     
-    PHQ9_QUESTIONS = [
-        "Little interest or pleasure in doing things",
-        "Feeling down, depressed, or hopeless",
-        "Trouble falling or staying asleep, or sleeping too much",
-        "Feeling tired or having little energy",
-        "Poor appetite or overeating",
-        "Feeling bad about yourself—or that you are a failure or have let yourself or your family down",
-        "Trouble concentrating on things, such as reading the newspaper or watching television",
-        "Moving or speaking so slowly that other people could have noticed. Or the opposite—being so fidgety or restless that you have been moving around a lot more than usual",
-        "Thoughts that you would be better off dead or of hurting yourself in some way"
-    ]
+    # Check if already completed today
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    if st.session_state.get("last_checkin_date") == today_str:
+        st.success(f"You've already completed today's check-in (Score: **{st.session_state['phq9_score']}** - **{st.session_state['phq9_interpretation']}**). Come back tomorrow!")
+        st.markdown("---")
+        st.subheader("Your Last Check-in Result")
+        st.markdown(f"**Score:** `{st.session_state['phq9_score']}`")
+        st.markdown(f"**Interpretation:** **{st.session_state['phq9_interpretation']}**")
+        return
+
     
-    SCORE_MAPPING = {
-        "Not at all": 0,
-        "Several days": 1,
-        "More than half the days": 2,
-        "Nearly every day": 3
-    }
-    
+    # PHQ-9 Questions Setup
+    scores = {}
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     
-    current_answers = []
+    # Using columns for a cleaner layout
+    col_q, col_s = st.columns([4, 1])
+    col_q.markdown("**Symptom**")
+    col_s.markdown("**Score**")
+    st.markdown("---")
     
-    for i, q in enumerate(PHQ9_QUESTIONS):
-        answer = st.radio(f"{i+1}. Over the past two weeks, how often have you been bothered by the following problems: **{q}**", 
-                          options=list(SCORE_MAPPING.keys()), 
-                          key=f"phq9_q_{i}")
-        current_answers.append(SCORE_MAPPING[answer])
-
+    # Question loop
+    for i, question in enumerate(PHQ9_QUESTIONS):
+        col_q, col_s = st.columns([4, 1])
+        with col_q:
+            st.markdown(question)
+        with col_s:
+            # Score options: 0=Not at all, 1=Several days, 2=More than half the days, 3=Nearly every day
+            scores[i] = st.selectbox(
+                label=f"q{i}", 
+                options=[0, 1, 2, 3], 
+                format_func=lambda x: f"{x}",
+                key=f"phq9_q_{i}",
+                label_visibility="collapsed"
+            )
+            
     st.markdown("</div>", unsafe_allow_html=True)
 
-    if st.button("Calculate Score & Interpretation", key="phq9_calculate_btn", type="primary"):
-        total_score = sum(current_answers)
+    
+    if st.button("Calculate Check-in Score", key="calculate_phq9_btn", use_container_width=True):
+        total_score = sum(scores.values())
         
-        if 0 <= total_score <= 4:
-            interpretation = "Minimal Depression. You may not need treatment."
-        elif 5 <= total_score <= 9:
-            interpretation = "Mild Depression. Watchful waiting and repeat screening recommended."
-        elif 10 <= total_score <= 14:
-            interpretation = "Moderate Depression. Treatment plan recommended."
-        elif 15 <= total_score <= 19:
-            interpretation = "Moderately Severe Depression. Active treatment with medication and/or therapy recommended."
-        else: # 20-27
-            interpretation = "Severe Depression. Immediate treatment required."
-            
+        interpretation = "Interpretation unavailable"
+        for (low, high), label in PHQ9_INTERPRETATION.items():
+            if low <= total_score <= high:
+                interpretation = label
+                break
+        
         st.session_state["phq9_score"] = total_score
         st.session_state["phq9_interpretation"] = interpretation
+        st.session_state["last_checkin_date"] = today_str
         
-        st.subheader("Your Results")
-        st.metric("Total PHQ-9 Score", total_score)
-        st.info(f"**Interpretation:** {interpretation}")
+        # Display feedback
+        st.success(f"Check-in Complete! Your score is **{total_score}** ({interpretation}).")
+        st.info("Remember, this is not a clinical diagnosis. Please reach out to a professional if you need support.")
         
-        st.session_state["phq9_last_completed"] = datetime.now().strftime("%Y-%m-%d")
+        # Optionally, prompt AI for next steps based on high score
+        if total_score >= 10 and st.session_state.get("_ai_available"):
+            ai_prompt = f"The user just completed a check-in with a score of {total_score} ({interpretation}). Offer a very gentle, encouraging, and supportive message suggesting they chat with you or try a simple coping exercise (like breathing or a small positive action)."
+            ref_thought = safe_generate(ai_prompt, max_tokens=150)
+            st.session_state["last_reframing_card"] = ref_thought # Re-use the card mechanism for display
+            
         st.rerun()
-    
-    if st.session_state.get("phq9_score") is not None:
-        st.subheader("Last Score Summary")
-        st.metric("Score", st.session_state["phq9_score"])
-        st.info(f"Interpretation: {st.session_state['phq9_interpretation']}")
 
 
 def report_summary_panel():
     st.header("Report & Summary 📄")
-    st.markdown("A consolidated view of your wellness metrics and progress.")
+    st.markdown("A consolidated view of your well-being progress.")
     
-    col_score, col_last = st.columns(2)
+    if not st.session_state["logged_in"]:
+        st.warning("Please log in to view your personalized summary.")
+        return
     
-    col_score.metric("Last PHQ-9 Score", st.session_state.get("phq9_score", "N/A"))
-    col_last.metric("Last Mood Log", st.session_state["streaks"].get("last_mood_date", "N/A"))
+    col_metrics, col_stats = st.columns(2)
     
-    st.markdown("---")
-
-    if st.session_state.get("phq9_interpretation"):
-         st.subheader("Wellness Check-in Interpretation")
-         st.info(f"**PHQ-9 Result:** {st.session_state['phq9_interpretation']}")
-    
-    # Simple Mood Summary
-    st.subheader("Mood Trends")
-    if st.session_state["mood_history"]:
-        df = pd.DataFrame(st.session_state["mood_history"]).copy()
-        avg_mood = df['mood'].mean()
-        st.metric("Average Mood Score", f"{avg_mood:.2f}/11")
+    # --- Metrics Column ---
+    with col_metrics:
+        st.subheader("Key Wellness Metrics")
         
-        st.subheader("All Time Journal Sentiment")
-        all_sentiment = [e["sentiment"] for e in st.session_state["daily_journal"]]
-        if all_sentiment:
-            avg_sentiment = sum(all_sentiment) / len(all_sentiment)
-            st.metric("Average Journal Sentiment", f"{avg_sentiment:.3f}")
-        else:
-            st.info("No journal sentiment recorded.")
+        # Mood Metric
+        avg_mood = 0
+        if st.session_state["mood_history"]:
+            df_mood = pd.DataFrame(st.session_state["mood_history"])
+            avg_mood = df_mood["mood"].mean()
             
-        st.subheader("Your Badges")
-        if st.session_state["streaks"]["badges"]:
-            st.success(", ".join(st.session_state["streaks"]["badges"]))
+        st.metric("Avg. Mood Score (1-11)", f"{avg_mood:.1f}", delta_color="off")
+        
+        # PHQ-9 Metric
+        phq9_score = st.session_state.get("phq9_score")
+        if phq9_score is not None:
+            st.metric("Last Check-in Score (PHQ-9)", f"{phq9_score} / 27", delta=st.session_state.get("phq9_interpretation"), delta_color="off")
         else:
-            st.info("Keep logging to earn your first badge!")
+            st.info("Complete a Wellness Check-in to see your score here.")
 
+        # Journal Metric
+        avg_sentiment = 0.0
+        if st.session_state["daily_journal"]:
+            df_journal = pd.DataFrame(st.session_state["daily_journal"])
+            avg_sentiment = df_journal["sentiment"].mean()
+
+        sentiment_label = "Positive" if avg_sentiment > 0.1 else ("Negative" if avg_sentiment < -0.1 else "Neutral")
+        st.metric("Avg. Journal Sentiment", sentiment_label, delta=f"{avg_sentiment:.2f}")
+
+    # --- Stats Column ---
+    with col_stats:
+        st.subheader("Progress & Badges")
+        st.metric("Current Mood Streak", f"{st.session_state['streaks'].get('mood_log', 0)} Days")
+        st.metric("Total Journal Entries", len(st.session_state["daily_journal"]))
+        st.metric("Total Badges Earned", len(st.session_state["streaks"]["badges"]))
+        
+        if st.session_state["streaks"]["badges"]:
+            st.markdown("---")
+            st.markdown("**Your Badges:** " + " | ".join([f"**{b}** 🌟" for b in st.session_state["streaks"]["badges"]]))
+            
     st.markdown("---")
-    st.markdown("_This report is generated for your self-reflection and is not a substitute for professional medical advice._")
+    
+    # --- Narrative Summary (AI Driven) ---
+    st.subheader("Personalized Narrative")
+    
+    # Final AI Call for a comprehensive summary
+    if st.session_state.get("_ai_available") and st.button("Generate Full AI Summary"):
+        with st.spinner("Analyzing your data and writing your report..."):
+            summary_prompt = f"""
+            Generate a personalized, empathetic summary for the user based on the following data points:
+            - Average Mood Score (1-11): {avg_mood:.1f}
+            - Last PHQ-9 Score (0-27): {phq9_score or 'N/A'}
+            - Average Journal Sentiment Score (-1 to 1): {avg_sentiment:.2f}
+            - Total Journal Entries: {len(st.session_state['daily_journal'])}
+            - Current Mood Streak: {st.session_state['streaks'].get('mood_log', 0)} days
 
+            Write a supportive message that:
+            1. Validates their journey and any consistency shown (streak/entries).
+            2. Gently addresses the overall sentiment/mood score (if low, suggest focusing on small wins; if high, encourage maintenance).
+            3. Provides one actionable, non-clinical piece of advice related to the data.
+            Keep it under 150 words.
+            """
+            
+            summary_response = safe_generate(summary_prompt, max_tokens=250)
+            st.markdown(f"<div class='card'><p>{summary_response}</p></div>", unsafe_allow_html=True)
+    else:
+        st.info("Tap 'Generate Full AI Summary' to get a narrative report.")
 
-# ---------- Page Routing (Retained) ----------
-
+# ---------- Page Renderer ----------
 if st.session_state["page"] == "Home":
     homepage_panel()
 elif st.session_state["page"] == "AI Chat":
@@ -1075,7 +1171,7 @@ elif st.session_state["page"] == "Mindful Journaling":
 elif st.session_state["page"] == "Journal Analysis":
     journal_analysis_panel()
 elif st.session_state["page"] == "Mindful Breathing":
-    mindful_breathing_panel() # This is the disabled version now
+    mindful_breathing_panel()
 elif st.session_state["page"] == "IoT Dashboard (ECE)":
     iot_dashboard_panel()
 elif st.session_state["page"] == "Wellness Check-in":
