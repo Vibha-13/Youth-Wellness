@@ -553,9 +553,9 @@ def sidebar_auth():
                     if user and st.session_state.get("_db_connected"):
                         entries = load_journal_db(st.session_state["user_id"], st.session_state.get("_supabase_client_obj")) or []
                         st.session_state["daily_journal"] = [{"date": e.get("created_at"), "text": e.get("entry_text"), "sentiment": e.get("sentiment_score")} for e in entries]
-                        st.sidebar.success("Logged in and data loaded.")
+                        st.sidebar.success("Logged in and data loaded. ✅")
                     elif st.session_state.get("_db_connected") is False:
-                         st.sidebar.info("Logged in locally (no DB).")
+                         st.sidebar.info("Logged in locally (no DB). 🏠")
                          
                     st.rerun()
 
@@ -565,7 +565,7 @@ def sidebar_auth():
                         st.session_state["user_id"] = uid
                         st.session_state["user_email"] = email
                         st.session_state["logged_in"] = True
-                        st.sidebar.success("Registered & logged in.")
+                        st.sidebar.success("Registered & logged in. 🎉")
                         st.rerun()
                     else:
                         st.sidebar.error("Registration failed. Try again or check DB connection.")
@@ -592,7 +592,7 @@ def sidebar_auth():
             st.session_state["_ai_available"] = _ai_available
             st.session_state["chat_messages"] = _chat_history_list if _ai_available else [{"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"}]
 
-            st.sidebar.info("Logged out.")
+            st.sidebar.info("Logged out. 👋")
             st.rerun()
 
 sidebar_auth()
@@ -794,7 +794,7 @@ def mindful_journaling_panel():
     with st.container():
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         
-        # --- TEXT AREA (Fix included in global CSS and key logic) ---
+        # --- TEXT AREA ---
         entry_text = st.text_area(
             "What's on your mind right now? (The more you write, the better the analysis!)", 
             height=250, 
@@ -829,8 +829,9 @@ def mindful_journaling_panel():
                         
                         st.session_state["last_reframing_card"] = reframing_thought
                 
-                # Clear the input field after submission
-                st.session_state[ENTRY_KEY] = ""
+                # FIX: Removed st.session_state[ENTRY_KEY] = ""
+                # The page reruns, which naturally resets the widget's value.
+                
                 st.session_state["page"] = "Journal Analysis"
                 st.rerun()
             else:
@@ -945,9 +946,13 @@ def mindful_breathing_panel():
         duration = st.session_state["breathing_duration"]
         
         # Update progress bar and step logic
-        progress_val = st.session_state["breathing_progress"] + 0.1
+        # Increment by a small value to simulate continuous change
+        st.session_state["breathing_progress"] += 0.1
+        progress_val = st.session_state["breathing_progress"]
+        
+        # Check if current step is complete
         if progress_val > duration:
-            progress_val = 0.1 # Reset
+            progress_val = 0.1 # Reset counter for next step
             
             if step == "INHALE":
                 st.session_state["breathing_step"] = "HOLD"
@@ -958,6 +963,8 @@ def mindful_breathing_panel():
             elif step == "EXHALE":
                 st.session_state["breathing_step"] = "INHALE"
                 st.session_state["breathing_duration"] = 4
+            
+            st.session_state["breathing_progress"] = progress_val
             st.rerun() # Rerun to update the step text immediately
         
         st.session_state["breathing_progress"] = progress_val
@@ -969,12 +976,21 @@ def mindful_breathing_panel():
             # Animation Class Logic
             animation_class = "breathe-inhale" if step == "INHALE" else ("breathe-exhale" if step == "EXHALE" else "")
             
+            # Use style to stop the animation when HOLDING
+            style = ""
+            if step == "HOLD":
+                # Scale to max size during hold
+                style = "transform: scale(2.5);" 
+            else:
+                # Apply continuous animation for inhale/exhale
+                style = f"animation-duration: {duration}s; animation-iteration-count: infinite;"
+
             st.markdown(f"""
-                <div class='breathing-circle {animation_class}' 
-                     style='animation-duration: {duration}s;'>
+                <div class='breathing-circle {animation_class}' style='{style}'>
                      {step}
                 </div>
             """, unsafe_allow_html=True)
+
 
         with col_info:
             st.subheader(f"Current Phase: {st.session_state['breathing_step']}")
