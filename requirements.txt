@@ -1,14 +1,14 @@
-# Core Streamlit and Data
+# Core Streamlit and Data Handling
 streamlit
 pandas
 numpy
 
-# Visualization (Fixes the ModuleNotFoundError)
+# Visualization (Fixes the ModuleNotFoundError for plotly.express)
 plotly
 
 # AI & Sentiment Analysis
-openai # Used to interface with OpenRouter
+openai
 vaderSentiment
 
 # Database Connectivity
-supabase # Used for your Supabase client setup
+supabase
