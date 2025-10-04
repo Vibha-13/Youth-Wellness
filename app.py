@@ -262,6 +262,7 @@ def generate_simulated_physiological_data(current_time_ms):
     
     return {
         "raw_ppg_signal": raw_ppg_signal, 
+        "filtered_hr": clean_hr, # [NEW: Added for Check-in panel]
         "gsr_stress_level": gsr_value,
         "time_ms": current_time_ms
     }
@@ -282,10 +283,12 @@ def setup_ai_model(api_key: str, history: list):
             base_url=OPENROUTER_BASE_URL
         )
         
+        # [UPGRADED: Enhanced System Instruction]
         system_instruction = """
-You are 'The Youth Wellness Buddy,' an AI designed for teens. 
+You are 'The Youth Wellness Buddy,' an AI designed for teenagers. 
 Your primary goal is to provide non-judgemental, empathetic, and encouraging support. 
 Your personality is warm, slightly informal, and very supportive.
+Crucially: Always validate the user's feelings first. Never give medical or diagnostic advice. Focus on suggesting simple, actionable coping strategies like breathing, journaling, or connecting with friends. Keep responses concise and focused on the user's current emotional context.
 """
         # Append system instruction to history if it's the first element
         if not history or history[0].get("role") != "system":
@@ -318,6 +321,10 @@ if "kalman_state" not in st.session_state:
     st.session_state["kalman_state"] = initialize_kalman()
 if "physiological_data" not in st.session_state:
     st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level"])
+# [NEW: Store latest ECE Data]
+if "latest_ece_data" not in st.session_state:
+    st.session_state["latest_ece_data"] = {"filtered_hr": 75.0, "gsr_stress_level": 1.0}
+
 
 # AI/DB/Auth State
 if "_ai_model" not in st.session_state:
@@ -447,7 +454,7 @@ def get_all_user_text() -> str:
     return " ".join(parts).strip()
 
 
-# ---------- Supabase helpers (Retained) ----------
+# ---------- Supabase helpers (UPGRADED for Mood/PHQ-9) ----------
 def register_user_db(email: str):
     supabase_client = st.session_state.get("_supabase_client_obj")
     if not supabase_client:
@@ -479,15 +486,53 @@ def save_journal_db(user_id, text: str, sentiment: float) -> bool:
     except Exception:
         return False
 
-@st.cache_data(show_spinner=False)
-def load_journal_db(user_id, supabase_client):
+# [NEW DB FUNCTION]
+def save_mood_db(user_id, mood: int, note: str) -> bool:
+    supabase_client = st.session_state.get("_supabase_client_obj")
     if not supabase_client:
-        return []
+        return False
     try:
-        res = supabase_client.table("journal_entries").select("*").eq("user_id", user_id).order("created_at").execute()
-        return res.data or []
+        supabase_client.table("mood_logs").insert({"user_id": user_id, "mood_score": mood, "note": note}).execute()
+        return True
     except Exception:
-        return []
+        return False
+
+# [NEW DB FUNCTION]
+def save_phq9_db(user_id, score: int, interpretation: str) -> bool:
+    supabase_client = st.session_state.get("_supabase_client_obj")
+    if not supabase_client:
+        return False
+    try:
+        supabase_client.table("phq9_scores").insert({"user_id": user_id, "score": score, "interpretation": interpretation}).execute()
+        return True
+    except Exception:
+        return False
+
+
+@st.cache_data(show_spinner=False)
+def load_all_user_data(user_id, supabase_client):
+    if not supabase_client:
+        return {"journal": [], "mood": [], "phq9": []}
+    
+    data = {}
+    try:
+        # Load Journal
+        res_j = supabase_client.table("journal_entries").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+        data["journal"] = [{"date": e.get("created_at"), "text": e.get("entry_text"), "sentiment": e.get("sentiment_score")} for e in res_j.data or []]
+        
+        # Load Mood
+        res_m = supabase_client.table("mood_logs").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+        data["mood"] = [{"date": e.get("created_at"), "mood": e.get("mood_score"), "note": e.get("note")} for e in res_m.data or []]
+        
+        # Load PHQ-9 (just the latest one)
+        res_p = supabase_client.table("phq9_scores").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(1).execute()
+        data["phq9"] = res_p.data or []
+
+    except Exception:
+        # Fallback to empty lists on failure
+        return {"journal": [], "mood": [], "phq9": []}
+        
+    return data
 
 
 # ---------- Sidebar Navigation and Auth ----------
@@ -539,22 +584,32 @@ def sidebar_auth():
         if st.sidebar.button("Login / Register"):
             if email:
                 user = None
-                if st.session_state.get("_db_connected"):
+                db_connected = st.session_state.get("_db_connected")
+                
+                if db_connected:
                     user_list = get_user_by_email_db(email)
                     if user_list:
                         user = user_list[0]
                 
-                if user or st.session_state.get("_db_connected") is False:
+                if user or db_connected is False:
                     st.session_state["user_id"] = user.get("id") if user else "local_user"
                     st.session_state["user_email"] = email
                     st.session_state["logged_in"] = True
-                    st.session_state["daily_journal"] = [] 
                     
-                    if user and st.session_state.get("_db_connected"):
-                        entries = load_journal_db(st.session_state["user_id"], st.session_state.get("_supabase_client_obj")) or []
-                        st.session_state["daily_journal"] = [{"date": e.get("created_at"), "text": e.get("entry_text"), "sentiment": e.get("sentiment_score")} for e in entries]
+                    if user and db_connected:
+                        # [UPGRADED: Load ALL data]
+                        user_data = load_all_user_data(st.session_state["user_id"], st.session_state.get("_supabase_client_obj"))
+                        st.session_state["daily_journal"] = user_data["journal"]
+                        st.session_state["mood_history"] = user_data["mood"]
+                        
+                        if user_data["phq9"]:
+                            latest_phq9 = user_data["phq9"][0]
+                            st.session_state["phq9_score"] = latest_phq9.get("score")
+                            st.session_state["phq9_interpretation"] = latest_phq9.get("interpretation")
+                            st.session_state["last_phq9_date"] = pd.to_datetime(latest_phq9.get("created_at")).strftime("%Y-%m-%d")
+                            
                         st.sidebar.success("Logged in and data loaded. ✅")
-                    elif st.session_state.get("_db_connected") is False:
+                    elif db_connected is False:
                          st.sidebar.info("Logged in locally (no DB). 🏠")
                          
                     st.rerun()
@@ -581,6 +636,7 @@ def sidebar_auth():
             
             # Reset major states
             st.session_state["daily_journal"] = []
+            st.session_state["mood_history"] = [] # [NEW: Reset mood history]
             st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level"])
             st.session_state["kalman_state"] = initialize_kalman()
             
@@ -667,7 +723,7 @@ def homepage_panel():
         st.markdown(f"""
         <div class='card' style='border-left: 8px solid #FF5733;'>
             <h3 style='margin-top:0;'>IoT Monitoring (ECE Demo) ⚙️</h3>
-            <p style='font-size: 0.95rem;'>Simulated real-time physiological data (Heart Rate/Stress) using a Kalman Filter demonstration.</p>
+            <p style='font-size: 0.95rem;'>Simulated real-time physiological data (Heart Rate/Stress) using a Kalman Filter demonstration. See the Check-in panel for integration.</p>
             <div style='text-align: right;'><a href='#' onclick="window.parent.document.querySelector('input[value=\\'⚙️ IoT Dashboard (ECE)\\']').click(); return false;" style='color:#FF5733; font-weight: 600; text-decoration: none;'>Go to Dashboard →</a></div>
         </div>
         """, unsafe_allow_html=True)
@@ -686,7 +742,15 @@ def mood_tracker_panel():
             note = st.text_input("Optional: Add a short note about why you feel this way", key="mood_note_input")
             if st.button("Log Mood", key="log_mood_btn"):
                 entry = {"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "mood": mood, "note": note}
-                st.session_state["mood_history"].append(entry)
+                
+                # [UPGRADED: Save to DB]
+                if st.session_state.get("logged_in") and st.session_state.get("_db_connected"):
+                    save_mood_db(st.session_state["user_id"], mood, note)
+                    st.success("Mood logged and saved to DB! 👍")
+                else:
+                    st.info("Mood logged locally. Log in to save permanently.")
+                    
+                st.session_state["mood_history"].insert(0, entry) # Insert at the beginning to keep it sorted descending
 
                 # Streak Logic
                 last_date = st.session_state["streaks"].get("last_mood_date")
@@ -698,6 +762,7 @@ def mood_tracker_panel():
                     except Exception:
                         last_dt = None
 
+                # Only update streak if a log hasn't been made TODAY
                 if last_dt != today:
                     yesterday = today - timedelta(days=1)
                     if last_dt == yesterday:
@@ -706,7 +771,6 @@ def mood_tracker_panel():
                         st.session_state["streaks"]["mood_log"] = 1
                     st.session_state["streaks"]["last_mood_date"] = today.strftime("%Y-%m-%d")
 
-                st.success("Mood logged. Tiny step, big impact. ✨")
 
                 # Badge check
                 for name, rule in BADGE_RULES:
@@ -731,7 +795,7 @@ def mood_tracker_panel():
         if st.session_state["mood_history"]:
             df = pd.DataFrame(st.session_state["mood_history"]).copy()
             df['date'] = pd.to_datetime(df['date'])
-            df = df.sort_values('date') 
+            df = df.sort_values('date', ascending=True) # Sort ascending for correct plotting
             fig = px.line(df, x='date', y='mood', title="Mood Over Time", markers=True,
                           color_discrete_sequence=['#4a90e2'])
             fig.update_layout(yaxis_range=[1, 11])
@@ -760,12 +824,13 @@ def ai_chat_panel():
     if not st.session_state.get("_ai_available"):
         st.warning("AI is running in 'Local (fallback)' mode. Responses may be simple.")
 
+    # Only display user/assistant messages for the chat history container
+    visible_messages = [m for m in st.session_state.chat_messages if m["role"] in ["user", "assistant"]]
+
     with st.container(height=500, border=True):
-        # Display chat messages from history
-        for message in st.session_state.chat_messages:
-            if message["role"] in ["user", "assistant"]:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
+        for message in visible_messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
     # Chat input
     if prompt := st.chat_input("Ask your wellness buddy..."):
@@ -812,8 +877,8 @@ def mindful_journaling_panel():
                     "text": entry_text, 
                     "sentiment": sentiment_score
                 }
-                st.session_state["daily_journal"].append(new_entry)
-                
+                st.session_state["daily_journal"].insert(0, new_entry) # Insert at the beginning
+
                 # Save to Supabase
                 if st.session_state.get("logged_in") and st.session_state.get("_db_connected"):
                     save_journal_db(st.session_state["user_id"], entry_text, sentiment_score)
@@ -829,8 +894,6 @@ def mindful_journaling_panel():
                         
                         st.session_state["last_reframing_card"] = reframing_thought
                 
-                # FIX: Removed st.session_state[ENTRY_KEY] = ""
-                # The page reruns, which naturally resets the widget's value.
                 
                 st.session_state["page"] = "Journal Analysis"
                 st.rerun()
@@ -845,7 +908,7 @@ def mindful_journaling_panel():
     if st.session_state["daily_journal"]:
         df_journal = pd.DataFrame(st.session_state["daily_journal"])
         
-        for index, row in df_journal.sort_values(by="date", ascending=False).iterrows():
+        for index, row in df_journal.iterrows(): # Data is already sorted descending
             date_str = pd.to_datetime(row["date"]).strftime("%Y-%m-%d %H:%M")
             sentiment_color = "red" if row["sentiment"] < -0.1 else ("green" if row["sentiment"] > 0.1 else "gray")
             
@@ -900,7 +963,7 @@ def journal_analysis_panel():
     # Sentiment Plot (UPGRADED TO PLOTLY)
     st.subheader("Sentiment Over Time")
     fig = px.bar(
-        df_journal, 
+        df_journal.sort_values('date', ascending=True), # Sort ascending for plot
         x='date', 
         y='sentiment_score', 
         title="Journal Sentiment History (VADER Compound Score)",
@@ -1032,6 +1095,12 @@ def iot_dashboard_panel():
         "gsr_stress_level": new_raw_data["gsr_stress_level"]
     }
     
+    # [NEW: Update latest ECE data for Check-in panel]
+    st.session_state["latest_ece_data"] = {
+        "filtered_hr": filtered_hr,
+        "gsr_stress_level": new_raw_data["gsr_stress_level"]
+    }
+    
     # 2. Update DataFrame
     df = st.session_state["physiological_data"]
     new_row = pd.DataFrame([new_data_point])
@@ -1083,12 +1152,37 @@ def iot_dashboard_panel():
     st.rerun()
 
 
-# ---------- PANELS: Wellness Check-in (PHQ-9) ----------
+# ---------- PANELS: Wellness Check-in (PHQ-9 + ECE Integration) ----------
 def wellness_checkin_panel():
     st.header("Wellness Check-in 🩺")
     st.markdown("This is a simplified, non-diagnostic version of the PHQ-9. Use it to check in with yourself.")
     
     today_str = datetime.now().strftime("%Y-%m-%d")
+
+    # 1. [NEW: ECE Data Integration]
+    latest_hr = st.session_state["latest_ece_data"]["filtered_hr"]
+    latest_gsr_stress_raw = st.session_state["latest_ece_data"]["gsr_stress_level"]
+    latest_gsr_stress = max(0, latest_gsr_stress_raw - 1.0) * 10
+    
+    st.subheader("Real-time Vitals Snapshot (Simulated ECE)")
+    
+    col_hr, col_stress = st.columns(2)
+    with col_hr:
+         st.metric("Heart Rate (BPM)", f"{latest_hr:.1f}")
+    with col_stress:
+        stress_color = "red" if latest_gsr_stress >= 8 else ("orange" if latest_gsr_stress >= 5 else "green")
+        st.markdown(f"""
+        <div style='color: {stress_color}; font-size: 1.5rem; font-weight: 700;'>
+            {latest_gsr_stress:.1f}
+        </div>
+        <p style='font-size: 0.8rem; color: #777; margin-top: -10px;'>GSR Stress Index</p>
+        """, unsafe_allow_html=True)
+
+
+    if latest_gsr_stress >= 8:
+        st.warning("⚠️ **Your simulated stress index is currently HIGH.** Consider taking a break before starting the check-in. Maybe try a **Mindful Breathing** session?")
+    
+    st.markdown("---")
 
     if st.session_state.get("last_phq9_date") == today_str and st.session_state.get("phq9_score") is not None:
         # Already completed today
@@ -1110,7 +1204,7 @@ def wellness_checkin_panel():
         """, unsafe_allow_html=True)
         return
 
-    # User has not completed today's check-in
+    # 2. PHQ-9 Questions
     st.subheader("Over the last two weeks, how often have you been bothered by the following?")
     
     phq9_answers = {}
@@ -1146,11 +1240,17 @@ def wellness_checkin_panel():
         
         # Add to mood history (optional, for data analysis)
         phq9_mood = max(1, 11 - (total_score // 3)) # Maps 0->11, 27->2
-        st.session_state["mood_history"].append({
+        mood_entry = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
             "mood": phq9_mood, 
             "note": f"PHQ-9 Check-in: Score {total_score} ({interpretation})"
-        })
+        }
+        st.session_state["mood_history"].insert(0, mood_entry)
+
+        # [UPGRADED: Save PHQ-9 and Mood to DB]
+        if st.session_state.get("logged_in") and st.session_state.get("_db_connected"):
+             save_phq9_db(st.session_state["user_id"], total_score, interpretation)
+             save_mood_db(st.session_state["user_id"], phq9_mood, mood_entry["note"])
 
         st.success(f"Check-in complete! Your score is {total_score}.")
         st.balloons()
@@ -1234,7 +1334,7 @@ def report_summary_panel():
         if st.session_state["mood_history"]:
             df = pd.DataFrame(st.session_state["mood_history"]).copy()
             df['date'] = pd.to_datetime(df['date'])
-            df = df.sort_values('date')
+            df = df.sort_values('date', ascending=True)
             fig = px.line(df, x='date', y='mood', markers=True, color_discrete_sequence=['#4a90e2'])
             fig.update_layout(height=300)
             st.plotly_chart(fig, use_container_width=True)
@@ -1242,7 +1342,8 @@ def report_summary_panel():
     with col_vis2:
         st.subheader("Sentiment Distribution")
         if not df_journal.empty:
-            fig = px.histogram(df_journal, x='sentiment', nbins=20, title="Sentiment Distribution", color_discrete_sequence=['#28A745'])
+            df_journal['sentiment_score'] = pd.to_numeric(df_journal['sentiment'], errors='coerce')
+            fig = px.histogram(df_journal, x='sentiment_score', nbins=20, title="Sentiment Distribution", color_discrete_sequence=['#28A745'])
             fig.update_layout(yaxis_title="Number of Entries", height=300)
             st.plotly_chart(fig, use_container_width=True)
 
