@@ -816,7 +816,15 @@ def mindful_journaling_panel():
     
     with st.container():
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        entry_text = st.text_area("What's on your mind right now?", height=250, key="journal_input")
+        
+        # --- CORRECTED TEXT AREA ---
+        entry_text = st.text_area(
+            "What's on your mind right now?", 
+            height=250, 
+            key="journal_input",
+            value="" # Ensures the box starts empty and is ready for typing
+        )
+        # ---------------------------
         
         if st.button("Submit Entry & Analyze", key="submit_journal_btn", use_container_width=True):
             if entry_text:
@@ -846,6 +854,8 @@ def mindful_journaling_panel():
                         st.session_state["page"] = "Journal Analysis" # Send them to see the analysis
                         st.rerun()
                 
+                # Clear the input field after submission
+                st.session_state["journal_input"] = ""
                 st.session_state["page"] = "Journal Analysis"
                 st.rerun()
             else:
@@ -872,8 +882,7 @@ def mindful_journaling_panel():
             """, unsafe_allow_html=True)
     else:
         st.info("Your journal is empty. Write your first entry!")
-
-
+        
 def journal_analysis_panel():
     st.header("Journal Analysis 📊")
     st.markdown("See the data behind your words. This analysis covers all journal and chat entries.")
