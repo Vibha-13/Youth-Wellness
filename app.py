@@ -8,7 +8,7 @@ from datetime import datetime
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "YOUR_SUPABASE_URL_HERE")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "YOUR_SUPABASE_ANON_KEY_HERE")
 
-# --- CUSTOM CSS FOR STYLING (Matching your screenshot) ---
+# --- CUSTOM CSS FOR STYLING ---
 
 def apply_custom_styles():
     """Applies custom CSS for card styling and overall layout."""
@@ -62,7 +62,7 @@ def init_connection() -> Client:
         return None
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ⭐️ FIX: Use _supabase_client to avoid UnhashableParamError
+# ⭐️ CACHING FIX: Use _supabase_client to avoid UnhashableParamError
 @st.cache_data(show_spinner="Loading user data...")
 def load_all_user_data(user_id, _supabase_client: Client):
     """
@@ -72,7 +72,6 @@ def load_all_user_data(user_id, _supabase_client: Client):
     if not user_id or not _supabase_client:
         return None
 
-    # Note: Ensure you have a 'profiles' table with an 'id' column matching Supabase 'auth.users.id'
     response = _supabase_client.table("profiles").select("*").eq("id", user_id).execute()
     
     return response.data[0] if response.data else None
@@ -93,11 +92,25 @@ def sign_in(email, password, supabase_client):
             st.session_state["current_page"] = "home" 
             st.rerun()
         else:
-            st.error("Sign-in failed. Please check your credentials.")
+            st.error("Sign-in failed. Please check your credentials or confirm your email.")
     except Exception as e:
-        # The error in your screenshot "You must provide either an email or phone number and a password" 
-        # is a validation error, which this handles.
         st.error(f"An error occurred during sign-in. Details: {e}")
+
+def sign_up(email, password, supabase_client):
+    """Handles new user sign-up."""
+    if not supabase_client: return
+
+    try:
+        response = supabase_client.auth.sign_up({"email": email, "password": password})
+        
+        if response.user and response.user.id:
+            # If Supabase requires email confirmation, the user must check their email.
+            st.sidebar.success("Registration successful! Please check your email for a confirmation link (if required) before logging in.")
+        else:
+            st.sidebar.error("Registration failed. This email may already be registered.")
+            
+    except Exception as e:
+        st.sidebar.error(f"Registration failed. Details: {e}")
 
 def sign_out():
     """Handles user sign-out."""
@@ -117,10 +130,7 @@ def send_password_reset(email, supabase_client):
     if not supabase_client: return
 
     try:
-        # Supabase sends a link to the user's email address
         supabase_client.auth.reset_password_for_email(email)
-        
-        # NOTE: A success message is always returned to prevent enumeration attacks.
         st.sidebar.success(f"If {email} is registered, a password reset link has been sent to your email.")
         
     except Exception as e:
@@ -129,12 +139,12 @@ def send_password_reset(email, supabase_client):
 # --- LAYOUT AND PAGE FUNCTIONS ---
 
 def sidebar_auth():
-    """Renders the sidebar with login/logout, navigation, and password reset."""
+    """Renders the sidebar with login/logout, navigation, sign-up, and password reset."""
     st.sidebar.title("Youth Wellness App")
     
     if st.session_state.get("is_authenticated"):
         
-        # ⭐️ Load data using the fixed function call
+        # Load user data with the fixed caching function
         user_data = load_all_user_data(
             st.session_state["user_id"],
             _supabase_client=st.session_state.get("_supabase_client_obj")
@@ -168,7 +178,23 @@ def sidebar_auth():
                 supabase_client = st.session_state.get("_supabase_client_obj")
                 sign_in(email, password, supabase_client)
             
-        # --- FORGOT PASSWORD SECTION (NEW) ---
+        # --- SIGN UP SECTION ---
+        st.sidebar.markdown("---")
+        st.sidebar.header("New User Registration")
+        with st.sidebar.form("signup_form"):
+            signup_email = st.text_input("Email for Sign Up", key="signup_email")
+            signup_password = st.text_input("Password for Sign Up", type="password", key="signup_password")
+            signup_submitted = st.form_submit_button("Register")
+            
+            if signup_submitted:
+                supabase_client = st.session_state.get("_supabase_client_obj")
+                if len(signup_password) < 6:
+                     st.sidebar.error("Password must be at least 6 characters.")
+                else:
+                    sign_up(signup_email, signup_password, supabase_client)
+
+
+        # --- FORGOT PASSWORD SECTION ---
         st.sidebar.markdown("---")
         st.sidebar.subheader("Forgot Password?")
         forgot_email = st.sidebar.text_input("Enter email to reset", key="forgot_email_input")
@@ -188,7 +214,6 @@ def home_page():
 
     col1, col2, col3 = st.columns(3)
 
-    # These metrics simulate the cards in your screenshot
     with col1:
         st.metric(label="Total Participants", value="1,245", delta="12%")
         
@@ -201,7 +226,7 @@ def home_page():
     st.markdown("---")
     
     st.header("Latest Updates")
-    st.info("The application is fully operational. Remember to configure your Supabase email settings!")
+    st.info("The application is fully operational. Remember to register and log in to begin.")
     st.write("Use the sidebar navigation to move between sections.")
 
 def overview_page():
@@ -209,7 +234,6 @@ def overview_page():
     st.title("Overview and Detailed Statistics")
     st.write(f"Hello, {st.session_state.get('user_email', 'User')}! Here is your detailed data overview.")
     
-    # Placeholder chart
     st.line_chart({"data": [10, 20, 15, 30, 25, 40]})
     
 # --- MAIN APPLICATION LOGIC ---
@@ -239,4 +263,4 @@ if __name__ == "__main__":
     else:
         # Content displayed when not logged in
         st.header("Welcome!")
-        st.info("Please sign in using the form in the sidebar to access the dashboard. If you don't have an account, you'll need a registration page or a manually created user in Supabase to log in.")
+        st.info("Please register a new account or sign in using the forms in the sidebar to access the dashboard.")
