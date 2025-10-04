@@ -814,15 +814,29 @@ def mindful_journaling_panel():
     st.header("Mindful Journaling 📝")
     st.markdown("Use this private space to reflect on your day, thoughts, and emotions.")
     
+    # --- TEMPORARY CSS FIX: FORCE TEXT COLOR TO BLACK ---
+    # This aggressively ensures your input text is visible if it was set to white by default.
+    st.markdown("""
+        <style>
+        textarea {
+            color: black !important; /* Force text color to black */
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    # ----------------------------------------------------
+    
     with st.container():
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         
-        # --- CORRECTED TEXT AREA ---
+        # --- SIMPLE KEY RETAINED ---
+        # We will clear this exact key later.
+        ENTRY_KEY = "journal_input_final" 
+        
         entry_text = st.text_area(
             "What's on your mind right now?", 
             height=250, 
-            key="journal_input",
-            value="" # Ensures the box starts empty and is ready for typing
+            key=ENTRY_KEY, # Use the defined key
+            value="" 
         )
         # ---------------------------
         
@@ -851,11 +865,13 @@ def mindful_journaling_panel():
                         reframing_thought = safe_generate(cbt_prompt, max_tokens=100)
                         
                         st.session_state["last_reframing_card"] = reframing_thought
-                        st.session_state["page"] = "Journal Analysis" # Send them to see the analysis
+                        st.session_state["page"] = "Journal Analysis" 
                         st.rerun()
                 
-                # Clear the input field after submission
-                st.session_state["journal_input"] = ""
+                # --- CRITICAL FIX: CLEAR THE EXACT MATCHING KEY ---
+                st.session_state[ENTRY_KEY] = ""
+                # ------------------------------------------------
+                
                 st.session_state["page"] = "Journal Analysis"
                 st.rerun()
             else:
