@@ -171,15 +171,24 @@ if "physiological_data" not in st.session_state:
     st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level"])
 
 if "_ai_model" not in st.session_state:
-    OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+    # --- UPGRADED ROBUST SECRET LOADING ---
+    raw_key = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+    # This line safely cleans the key regardless of quotes or format.
+    OPENROUTER_API_KEY = raw_key.strip().strip('"') if isinstance(raw_key, str) and raw_key else None
+    
     _ai_client_obj, _ai_available, _chat_history_list = setup_ai_model(OPENROUTER_API_KEY)
     st.session_state["_ai_model"] = _ai_client_obj 
     st.session_state["_ai_available"] = _ai_available
     st.session_state["chat_messages"] = _chat_history_list if _ai_available else [{"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"}]
     
 if "_supabase_client_obj" not in st.session_state:
-    SUPABASE_URL = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
-    SUPABASE_KEY = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
+    # --- UPGRADED ROBUST SECRET LOADING ---
+    raw_url = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
+    raw_key = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
+
+    SUPABASE_URL = raw_url.strip().strip('"') if isinstance(raw_url, str) and raw_url else None
+    SUPABASE_KEY = raw_key.strip().strip('"') if isinstance(raw_key, str) and raw_key else None
+    
     _supabase_client_obj, _db_connected = setup_supabase_client(SUPABASE_URL, SUPABASE_KEY)
     st.session_state["_supabase_client_obj"] = _supabase_client_obj
     st.session_state["_db_connected"] = _db_connected
@@ -357,48 +366,48 @@ st.markdown(
     
     /* 1. Global Background and Typography */
     .stApp { 
-        background: #ffffff; /* Clean white background */
-        color: #2c3e50; 
+        background: #F7F7F7; /* Light Grey background */
+        color: #1E1E1E; 
         font-family: 'Poppins', sans-serif; 
     }
     .main .block-container { 
-        padding: 2rem 5rem; /* Wider padding for better spacing */
+        padding: 2rem 4rem; /* Generous padding */
     }
     
     /* 2. Sidebar Aesthetics */
     .css-1d3f90z { /* Streamlit sidebar selector */
-        background-color: #f7f9fb; /* Light background for sidebar */
+        background-color: #FFFFFF; /* White background for sidebar */
+        box-shadow: 2px 0 10px rgba(0,0,0,0.05); /* Subtle shadow */
     }
     
-    /* 3. Custom Card Style (Stronger shadow for depth) */
+    /* 3. Custom Card Style (The Core Mobile App Look) */
     .card { 
-        background-color: #f7f9fb; /* Slightly off-white background */
-        border-radius: 20px; /* More rounded corners */
-        box-shadow: 0 10px 20px rgba(74, 144, 226, 0.15); /* Blue-tinted, stronger shadow */
-        padding: 25px; 
-        margin-bottom: 25px; 
-        border: 1px solid #e0e8f0; /* Subtle border */
+        background-color: #FFFFFF; /* White background for the card */
+        border-radius: 16px; /* Highly rounded corners */
+        box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1); /* Soft, noticeable shadow for lift */
+        padding: 20px; 
+        margin-bottom: 20px; 
+        border: 1px solid #EAEAEA; /* Very subtle border */
         transition: all .2s ease-in-out; 
     }
     .card:hover { 
-        transform: translateY(-5px); 
-        box-shadow: 0 15px 30px rgba(74, 144, 226, 0.25); 
+        transform: translateY(-3px); /* Subtle hover lift */
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15); 
     }
 
-    /* 4. Primary Button Style (High-Impact Pill Shape) */
+    /* 4. Primary Button Style (Vibrant and Rounded) */
     .stButton>button { 
-        color: #fff; 
-        background: linear-gradient(135deg, #4a90e2 0%, #7dace8 100%); /* Subtle gradient */
-        border-radius: 30px; /* Pill shape */
-        padding: 10px 25px; 
+        color: #FFFFFF; 
+        background: #5D54A4; /* Deep Purple (similar to the MindHealth app) */
+        border-radius: 25px; /* Pill shape */
+        padding: 10px 20px; 
         font-weight: 600; 
         border: none; 
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        box-shadow: 0 3px 5px rgba(0,0,0,0.1);
         transition: all .2s;
     }
     .stButton>button:hover { 
-        opacity: 0.9; 
-        transform: scale(1.02);
+        background: #7A72BF;
     }
     
     /* 5. Custom Sidebar Status */
@@ -406,16 +415,17 @@ st.markdown(
         padding: 5px 10px;
         border-radius: 8px;
         margin-bottom: 8px;
-        font-size: 0.9rem;
-        font-weight: 600;
+        font-size: 0.85rem;
+        font-weight: 500;
+        text-transform: uppercase;
     }
-    .status-connected { background-color: #e6ffee; color: #155724; border-left: 4px solid #28a745; }
-    .status-local { background-color: #fff8e6; color: #856404; border-left: 4px solid #ffc107; }
+    .status-connected { background-color: #E6FFE6; color: #155724; border-left: 4px solid #28A745; }
+    .status-local { background-color: #FFF3E0; color: #856404; border-left: 4px solid #FFC107; }
     
     /* 6. Larger Titles for Impact */
-    h1 { color: #2c3e50; font-weight: 700; margin-bottom: 0.5rem; }
-    h2 { color: #34495e; font-weight: 600; }
-    h3 { color: #597d9e; font-weight: 500; }
+    h1 { color: #1E1E1E; font-weight: 700; margin-bottom: 0.5rem; }
+    h2 { color: #333333; font-weight: 600; margin-top: 2rem;}
+    h3 { color: #5D54A4; font-weight: 500; margin-top: 1rem;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -526,62 +536,79 @@ sidebar_auth()
 # ---------- Panels (MODIFIED FOR UX) ----------
 def homepage_panel():
     # Use HTML for the main title to ensure font is applied
-    st.markdown(f"<h1>Your Wellness Sanctuary <span style='color: #4a90e2;'>🧠</span></h1>", unsafe_allow_html=True)
+    st.markdown(f"<h1>Your Wellness Sanctuary <span style='color: #5D54A4;'>🧠</span></h1>", unsafe_allow_html=True)
     st.markdown("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
     
     st.markdown("---")
     
-    # --- Row 1: Daily Inspiration & Quick Actions ---
-    col_main, col_img = st.columns([7, 3])
+    # --- Row 1: Daily Inspiration Card ---
     
-    with col_main:
-        st.markdown("<h2>Daily Focus ✨</h2>", unsafe_allow_html=True)
-        # Use a large, centered quote card
-        st.markdown("<div class='card' style='text-align:center; border-left: 5px solid #2ecc71;'>", unsafe_allow_html=True)
-        st.markdown(f"**<span style='font-size: 1.25rem;'>“{random.choice(QUOTES)}”</span>**", unsafe_allow_html=True)
+    # Daily Inspiration Card
+    with st.container():
+        st.markdown("<div class='card' style='border-left: 8px solid #FFC107;'>", unsafe_allow_html=True)
+        st.markdown("<h3>Daily Inspiration ✨</h3>")
+        st.markdown(f"**<span style='font-size: 1.25rem; font-style: italic;'>“{random.choice(QUOTES)}”</span>**", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: right; margin-top: 10px; font-size: 0.9rem;'>— Take a moment for yourself</p>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
         
-        st.markdown("<h3>Quick Actions</h3>")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            if st.button("🧘‍♀️ Start Breathing", key="home_breath_btn", use_container_width=True):
-                st.session_state["page"] = "Mindful Breathing"
-                st.rerun()
-        with c2:
-            if st.button("💬 Talk to AI", key="home_chat_btn", use_container_width=True):
-                st.session_state["page"] = "AI Chat"
-                st.rerun()
-        with c3:
-            if st.button("📝 Journal Now", key="home_journal_btn", use_container_width=True):
-                st.session_state["page"] = "Mindful Journaling"
-                st.rerun()
-                
-    with col_img:
-        st.image("https://images.unsplash.com/photo-1549490349-f06b3e942007?q=80&w=2070&auto=format&fit=crop", 
-                 caption="Take a moment for yourself", 
-                 use_column_width=True)
-
     st.markdown("---")
     
-    # --- Row 2: Feature Cards ---
+    # --- Row 2: Quick Actions (Similar to the mobile app's icon buttons) ---
+    st.markdown("<h2>Quick Actions</h2>")
+    
+    c1, c2, c3, c4 = st.columns(4)
+    
+    with c1:
+        if st.button("🧘‍♀️ Breathe", key="home_breath_btn", use_container_width=True):
+            st.session_state["page"] = "Mindful Breathing"
+            st.rerun()
+    with c2:
+        if st.button("💬 Chat AI", key="home_chat_btn", use_container_width=True):
+            st.session_state["page"] = "AI Chat"
+            st.rerun()
+    with c3:
+        if st.button("📝 Journal", key="home_journal_btn", use_container_width=True):
+            st.session_state["page"] = "Mindful Journaling"
+            st.rerun()
+    with c4:
+        if st.button("🩺 Check-in", key="home_checkin_btn", use_container_width=True):
+            st.session_state["page"] = "Wellness Check-in"
+            st.rerun()
+            
+    st.markdown("---")
+    
+    # --- Row 3: Feature Cards (Mimicking the spaced-out, illustrated cards) ---
     st.markdown("<h2>Your Toolkit</h2>")
     
-    f1, f2, f3, f4 = st.columns(4)
-    features = [
-        ("Mood Tracker", "📈 Log quick ratings, earn badges.", "#f39c12"),
-        ("AI Chat", "💬 Empathetic AI companion, always ready.", "#4a90e2"),
-        ("Journal & Insights", "📊 Track progress, visualize emotions.", "#2ecc71"),
-        ("IoT Dashboard (ECE)", "⚙️ Real-time heart-rate/stress monitoring (DSP Demo).", "#e74c3c")
-    ]
-    
-    for i, (title, desc, color) in enumerate(features):
-        with [f1, f2, f3, f4][i]:
-            st.markdown(f"""
-            <div class='card' style='padding: 15px; border-left: 5px solid {color};'>
-                <h4 style='margin-top:0;'>{title}</h4>
-                <p style='font-size: 0.9rem; margin-bottom: 0;'>{desc}</p>
-            </div>
-            """, unsafe_allow_html=True)
+    col_mood, col_journal = st.columns(2)
+
+    with col_mood:
+        st.markdown(f"""
+        <div class='card' style='border-left: 8px solid #5D54A4; height: 180px;'>
+            <h3 style='margin-top:0;'>Mood Tracker & Analysis 📈</h3>
+            <p style='font-size: 0.95rem;'>Log your daily emotional state and see your personal timeline evolve. Earn badges for consistency.</p>
+            <div style='text-align: right;'><a href='#' onclick="window.parent.document.querySelector('input[value=\'📈 Mood Tracker\']').click(); return false;" style='color:#5D54A4; font-weight: 600; text-decoration: none;'>View Dashboard →</a></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_journal:
+        st.markdown(f"""
+        <div class='card' style='border-left: 8px solid #28A745; height: 180px;'>
+            <h3 style='margin-top:0;'>Mindful Journaling 📝</h3>
+            <p style='font-size: 0.95rem;'>A private space for reflection. The AI analyzes your entries to provide insights and sentiment scores.</p>
+            <div style='text-align: right;'><a href='#' onclick="window.parent.document.querySelector('input[value=\'📝 Mindful Journaling\']').click(); return false;" style='color:#28A745; font-weight: 600; text-decoration: none;'>Start Writing →</a></div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    # IoT/ECE Card
+    with st.container():
+        st.markdown(f"""
+        <div class='card' style='border-left: 8px solid #FF5733;'>
+            <h3 style='margin-top:0;'>IoT Monitoring (ECE Demo) ⚙️</h3>
+            <p style='font-size: 0.95rem;'>Simulated real-time physiological data (Heart Rate/Stress) using a Kalman Filter demonstration.</p>
+            <div style='text-align: right;'><a href='#' onclick="window.parent.document.querySelector('input[value=\'⚙️ IoT Dashboard (ECE)\']').click(); return false;" style='color:#FF5733; font-weight: 600; text-decoration: none;'>Go to Dashboard →</a></div>
+        </div>
+        """, unsafe_allow_html=True)
 
 def mood_tracker_panel():
     st.header("Daily Mood Tracker 📈")
