@@ -5,7 +5,6 @@ from datetime import datetime
 
 # --- CONFIGURATION (UPDATE WITH YOUR ACTUAL KEYS) ---
 # IMPORTANT: Replace the placeholder values below with your actual Supabase URL and Key.
-# If you are using Streamlit Cloud, it's safer to use st.secrets instead of os.environ.get
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "YOUR_SUPABASE_URL_HERE")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "YOUR_SUPABASE_ANON_KEY_HERE")
 
@@ -58,7 +57,6 @@ def apply_custom_styles():
 @st.cache_resource
 def init_connection() -> Client:
     """Initializes and caches the Supabase connection."""
-    # Ensure keys are set before attempting to create a client
     if SUPABASE_URL == "YOUR_SUPABASE_URL_HERE" or SUPABASE_KEY == "YOUR_SUPABASE_ANON_KEY_HERE":
         st.error("Please update the SUPABASE_URL and SUPABASE_KEY in app.py with your actual credentials.")
         return None
@@ -74,18 +72,16 @@ def load_all_user_data(user_id, _supabase_client: Client):
     if not user_id or not _supabase_client:
         return None
 
+    # Note: Ensure you have a 'profiles' table with an 'id' column matching Supabase 'auth.users.id'
     response = _supabase_client.table("profiles").select("*").eq("id", user_id).execute()
     
-    # Assuming 'profiles' table has a row for the user
     return response.data[0] if response.data else None
 
 # --- AUTHENTICATION LOGIC ---
 
 def sign_in(email, password, supabase_client):
     """Handles user sign-in."""
-    if not supabase_client:
-        st.error("Supabase client is not initialized.")
-        return
+    if not supabase_client: return
         
     try:
         response = supabase_client.auth.sign_in_with_password({"email": email, "password": password})
@@ -94,13 +90,13 @@ def sign_in(email, password, supabase_client):
             st.session_state["user_id"] = response.user.id
             st.session_state["user_email"] = response.user.email
             st.session_state["is_authenticated"] = True
-            # Set the initial page upon successful login
             st.session_state["current_page"] = "home" 
             st.rerun()
         else:
             st.error("Sign-in failed. Please check your credentials.")
     except Exception as e:
-        # Catch specific API errors if possible
+        # The error in your screenshot "You must provide either an email or phone number and a password" 
+        # is a validation error, which this handles.
         st.error(f"An error occurred during sign-in. Details: {e}")
 
 def sign_out():
@@ -109,19 +105,31 @@ def sign_out():
         try:
             st.session_state["_supabase_client_obj"].auth.sign_out()
         except Exception:
-             # Ignore errors on sign out if the connection is already dropped
              pass 
 
-    # Clear session state variables
     for key in ["user_id", "user_email", "is_authenticated", "current_page", "user_data"]:
         if key in st.session_state:
             del st.session_state[key]
     st.rerun()
 
+def send_password_reset(email, supabase_client):
+    """Sends a password reset email using Supabase."""
+    if not supabase_client: return
+
+    try:
+        # Supabase sends a link to the user's email address
+        supabase_client.auth.reset_password_for_email(email)
+        
+        # NOTE: A success message is always returned to prevent enumeration attacks.
+        st.sidebar.success(f"If {email} is registered, a password reset link has been sent to your email.")
+        
+    except Exception as e:
+        st.sidebar.error(f"An error occurred: {e}")
+
 # --- LAYOUT AND PAGE FUNCTIONS ---
 
 def sidebar_auth():
-    """Renders the sidebar with login/logout and navigation."""
+    """Renders the sidebar with login/logout, navigation, and password reset."""
     st.sidebar.title("Youth Wellness App")
     
     if st.session_state.get("is_authenticated"):
@@ -131,7 +139,7 @@ def sidebar_auth():
             st.session_state["user_id"],
             _supabase_client=st.session_state.get("_supabase_client_obj")
         )
-        st.session_state["user_data"] = user_data # Store loaded data
+        st.session_state["user_data"] = user_data 
 
         st.sidebar.write(f"Logged in as: **{st.session_state.get('user_email', 'User')}**")
         
@@ -149,6 +157,7 @@ def sidebar_auth():
         st.sidebar.button("Logout", on_click=sign_out, key="logout_btn")
 
     else:
+        # --- LOGIN FORM ---
         st.sidebar.header("Login")
         with st.sidebar.form("login_form"):
             email = st.text_input("Email", key="login_email")
@@ -158,13 +167,25 @@ def sidebar_auth():
             if submitted:
                 supabase_client = st.session_state.get("_supabase_client_obj")
                 sign_in(email, password, supabase_client)
+            
+        # --- FORGOT PASSWORD SECTION (NEW) ---
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Forgot Password?")
+        forgot_email = st.sidebar.text_input("Enter email to reset", key="forgot_email_input")
+        
+        if st.sidebar.button("Send Reset Link", key="reset_button"):
+            if forgot_email:
+                supabase_client = st.session_state.get("_supabase_client_obj")
+                send_password_reset(forgot_email, supabase_client)
+            else:
+                st.sidebar.error("Please enter your email.")
+
 
 def home_page():
     """Renders the main home page content (dashboard view)."""
     st.title("Welcome to the Youth Wellness Dashboard")
     st.subheader("Quick Insights")
 
-    # Example of styled "cards" using st.columns and st.metric
     col1, col2, col3 = st.columns(3)
 
     # These metrics simulate the cards in your screenshot
@@ -180,7 +201,7 @@ def home_page():
     st.markdown("---")
     
     st.header("Latest Updates")
-    st.info("The application has successfully fixed the caching issue and is ready.")
+    st.info("The application is fully operational. Remember to configure your Supabase email settings!")
     st.write("Use the sidebar navigation to move between sections.")
 
 def overview_page():
@@ -198,19 +219,18 @@ if __name__ == "__main__":
     if "is_authenticated" not in st.session_state:
         st.session_state["is_authenticated"] = False
     if "current_page" not in st.session_state:
-        st.session_state["current_page"] = "home" # Default page
+        st.session_state["current_page"] = "home" 
 
-    # Initialize and store the Supabase client object in session_state
     if "_supabase_client_obj" not in st.session_state:
         st.session_state["_supabase_client_obj"] = init_connection()
 
     # 2. Apply Custom Styling
     apply_custom_styles()
 
-    # 3. Render Sidebar and handle authentication/navigation
+    # 3. Render Sidebar
     sidebar_auth()
 
-    # 4. Render Main Content based on authentication status and current page
+    # 4. Render Main Content
     if st.session_state["is_authenticated"]:
         if st.session_state["current_page"] == "home":
             home_page()
@@ -219,6 +239,4 @@ if __name__ == "__main__":
     else:
         # Content displayed when not logged in
         st.header("Welcome!")
-        st.info("Please sign in using the form in the sidebar to access the dashboard.")
-        # You can choose to show a truncated version of the home page or a marketing page here
-        # home_page()
+        st.info("Please sign in using the form in the sidebar to access the dashboard. If you don't have an account, you'll need a registration page or a manually created user in Supabase to log in.")
