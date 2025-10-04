@@ -1,14 +1,7 @@
-# Core Streamlit and Data Handling
 streamlit
 pandas
 numpy
-
-# Visualization (Fixes the ModuleNotFoundError for plotly.express)
 plotly
-
-# AI & Sentiment Analysis
 openai
-vaderSentiment
-
-# Database Connectivity
 supabase
+vaderSentiment
