@@ -2,6 +2,7 @@ import streamlit as st
 from supabase import create_client, Client
 import os
 from datetime import datetime
+from streamlit_js_eval import streamlit_js_eval # <-- NEW IMPORT for reading URL tokens
 
 # --- CONFIGURATION (UPDATE WITH YOUR ACTUAL KEYS) ---
 # IMPORTANT: Replace the placeholder values below with your actual Supabase URL and Key.
@@ -65,13 +66,11 @@ def init_connection() -> Client:
 # ⭐️ CACHING FIX: Use _supabase_client to avoid UnhashableParamError
 @st.cache_data(show_spinner="Loading user data...")
 def load_all_user_data(user_id, _supabase_client: Client):
-    """
-    Loads all profile data for a given user ID.
-    The '_supabase_client' parameter is ignored by st.cache_data for hashing.
-    """
+    """Loads all profile data for a given user ID."""
     if not user_id or not _supabase_client:
         return None
 
+    # NOTE: Requires a 'profiles' table with an 'id' column linked to auth.uid()
     response = _supabase_client.table("profiles").select("*").eq("id", user_id).execute()
     
     return response.data[0] if response.data else None
@@ -104,7 +103,6 @@ def sign_up(email, password, supabase_client):
         response = supabase_client.auth.sign_up({"email": email, "password": password})
         
         if response.user and response.user.id:
-            # If Supabase requires email confirmation, the user must check their email.
             st.sidebar.success("Registration successful! Please check your email for a confirmation link (if required) before logging in.")
         else:
             st.sidebar.error("Registration failed. This email may already be registered.")
@@ -136,17 +134,24 @@ def send_password_reset(email, supabase_client):
     except Exception as e:
         st.sidebar.error(f"An error occurred: {e}")
 
-# --- NEW PASSWORD RESET HANDLER (THE FIX FOR THE REDIRECT ISSUE) ---
+# --- PASSWORD RESET HANDLER (THE FINAL FIX) ---
 
 def password_reset_handler(supabase_client):
     """
-    Checks the URL for a Supabase recovery token and displays the password reset form.
+    Checks the URL's hash fragment for a Supabase recovery token and displays the reset form.
+    This uses JS to read the tokens that Streamlit normally misses.
     """
-    # 1. Get all URL query parameters
-    query_params = st.query_params
-
-    # 2. Check if the URL contains a recovery type (from the reset email)
-    if 'type' in query_params and query_params.get('type') == 'recovery':
+    # 1. Use JavaScript to explicitly get the URL hash fragment
+    # This is necessary because st.query_params often misses data after the '#'
+    try:
+        # st.session_state.get('url_hash') will be the string like "#access_token=...&type=recovery"
+        url_hash = streamlit_js_eval(js_expressions='window.location.hash', key='get_url_hash')
+    except Exception:
+        # Handle cases where the JS doesn't run (e.g., first load)
+        url_hash = ""
+        
+    # 2. Check if the recovery type is present in the hash fragment
+    if url_hash and "type=recovery" in url_hash:
         
         st.title("Password Reset")
         st.info("Please enter your new password below.")
@@ -163,15 +168,14 @@ def password_reset_handler(supabase_client):
                     st.error("Password must be at least 6 characters.")
                 else:
                     try:
-                        # 3. Use the update_user function. Supabase automatically uses the token in the URL.
+                        # 3. Update the user's password. The Supabase SDK reads the tokens directly from the URL.
                         supabase_client.auth.update_user(
                             { "password": new_password }
                         )
                         st.success("Password successfully reset! You can now log in with your new password.")
                         
-                        # 4. Cleanup and restart
-                        # Remove the query parameters from the URL to avoid showing the form on refresh
-                        st.query_params.clear() 
+                        # 4. Clear the hash fragment from the URL for security/cleanup
+                        streamlit_js_eval(js_expressions="window.location.hash = '';", key='clear_url_hash')
                         st.session_state["is_authenticated"] = False
                         st.rerun() 
                         
@@ -294,12 +298,12 @@ if __name__ == "__main__":
     if "_supabase_client_obj" not in st.session_state:
         st.session_state["_supabase_client_obj"] = init_connection()
 
-    supabase_client = st.session_state.get("_supabase_client_obj") # Get client object for handlers
+    supabase_client = st.session_state.get("_supabase_client_obj")
 
     # 2. Apply Custom Styling
     apply_custom_styles()
 
-    # ⭐️ 3. HANDLE PASSWORD RESET: Check URL first. If a token is present, only show the reset form.
+    # ⭐️ 3. HANDLE PASSWORD RESET: Check URL hash fragment first. 
     is_resetting = password_reset_handler(supabase_client)
 
     # 4. Only run the normal app flow if we are NOT showing the reset form
