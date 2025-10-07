@@ -136,6 +136,52 @@ def send_password_reset(email, supabase_client):
     except Exception as e:
         st.sidebar.error(f"An error occurred: {e}")
 
+# --- NEW PASSWORD RESET HANDLER (THE FIX FOR THE REDIRECT ISSUE) ---
+
+def password_reset_handler(supabase_client):
+    """
+    Checks the URL for a Supabase recovery token and displays the password reset form.
+    """
+    # 1. Get all URL query parameters
+    query_params = st.query_params
+
+    # 2. Check if the URL contains a recovery type (from the reset email)
+    if 'type' in query_params and query_params.get('type') == 'recovery':
+        
+        st.title("Password Reset")
+        st.info("Please enter your new password below.")
+
+        with st.form("new_password_form"):
+            new_password = st.text_input("New Password", type="password")
+            confirm_password = st.text_input("Confirm New Password", type="password")
+            submitted = st.form_submit_button("Set New Password")
+
+            if submitted:
+                if new_password != confirm_password:
+                    st.error("Passwords do not match.")
+                elif len(new_password) < 6:
+                    st.error("Password must be at least 6 characters.")
+                else:
+                    try:
+                        # 3. Use the update_user function. Supabase automatically uses the token in the URL.
+                        supabase_client.auth.update_user(
+                            { "password": new_password }
+                        )
+                        st.success("Password successfully reset! You can now log in with your new password.")
+                        
+                        # 4. Cleanup and restart
+                        # Remove the query parameters from the URL to avoid showing the form on refresh
+                        st.query_params.clear() 
+                        st.session_state["is_authenticated"] = False
+                        st.rerun() 
+                        
+                    except Exception as e:
+                        st.error(f"Failed to reset password. The link may have expired. Error: {e}")
+        return True # Indicate that the reset form was shown
+    
+    return False # Indicate that no reset form was shown
+
+
 # --- LAYOUT AND PAGE FUNCTIONS ---
 
 def sidebar_auth():
@@ -248,19 +294,26 @@ if __name__ == "__main__":
     if "_supabase_client_obj" not in st.session_state:
         st.session_state["_supabase_client_obj"] = init_connection()
 
+    supabase_client = st.session_state.get("_supabase_client_obj") # Get client object for handlers
+
     # 2. Apply Custom Styling
     apply_custom_styles()
 
-    # 3. Render Sidebar
-    sidebar_auth()
+    # ⭐️ 3. HANDLE PASSWORD RESET: Check URL first. If a token is present, only show the reset form.
+    is_resetting = password_reset_handler(supabase_client)
 
-    # 4. Render Main Content
-    if st.session_state["is_authenticated"]:
-        if st.session_state["current_page"] == "home":
-            home_page()
-        elif st.session_state["current_page"] == "overview":
-            overview_page()
-    else:
-        # Content displayed when not logged in
-        st.header("Welcome!")
-        st.info("Please register a new account or sign in using the forms in the sidebar to access the dashboard.")
+    # 4. Only run the normal app flow if we are NOT showing the reset form
+    if not is_resetting:
+        # 5. Render Sidebar
+        sidebar_auth()
+
+        # 6. Render Main Content
+        if st.session_state["is_authenticated"]:
+            if st.session_state["current_page"] == "home":
+                home_page()
+            elif st.session_state["current_page"] == "overview":
+                overview_page()
+        else:
+            # Content displayed when not logged in
+            st.header("Welcome!")
+            st.info("Please register a new account or sign in using the forms in the sidebar to access the dashboard.")
