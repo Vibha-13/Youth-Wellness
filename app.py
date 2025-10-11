@@ -368,6 +368,8 @@ if "latest_ece_data" not in st.session_state:
     st.session_state["latest_ece_data"] = {"filtered_hr": 75.0, "gsr_stress_level": 1.0}
 if "ece_history" not in st.session_state:
     st.session_state["ece_history"] = []
+if "ece_running" not in st.session_state:
+    st.session_state["ece_running"] = False # Default to stopped
 
 # AI/DB/Auth State
 if "_ai_model" not in st.session_state:
@@ -1556,7 +1558,8 @@ def journal_analysis_page():
         st.markdown(f"<div class='card' style='border-left: 5px solid #5D54A4;'>{reflection}</div>", unsafe_allow_html=True)
     else:
         st.info("Write a few more entries to unlock your personalized AI theme analysis.")
-        # --- 10. IoT Dashboard (ECE) ---
+
+# --- 10. IoT Dashboard (ECE) ---
 def iot_dashboard_page():
     st.title("IoT Dashboard (Simulated ECE Sensor Data) ⚙️")
     st.markdown("Real-time simulation of PPG (Heart Rate) and GSR (Stress) sensors, demonstrating Kalman Filter noise reduction.")
@@ -1631,7 +1634,7 @@ def iot_dashboard_page():
         stress_metric.metric("GSR Stress Level", f"{gsr_level:.2f}")
         
         # Correlate stress with last logged mood
-        mood_text = MOOD_EMOJI_MAP.get(int(st.session_state["mood_history"][0]["mood"])) if st.session_state["mood_history"] else "N/A"
+        mood_text = MOOD_EMOJI_MAP.get(int(st.session_state["mood_history"][0]["mood"])) if st.session_state["mood_history"] and st.session_state["mood_history"][0].get("mood") else "N/A"
         mood_metric.metric("Last Logged Mood", mood_text)
         
         st.session_state["latest_ece_data"] = {"filtered_hr": filtered_hr, "gsr_stress_level": gsr_level}
@@ -1673,9 +1676,12 @@ def iot_dashboard_page():
         time.sleep(0.5)
 
     # Simulation is stopped, display the final charts statically
-    st.info("Simulation is stopped. Press the button to resume.")
+    if st.session_state["live_chart_data"].empty:
+        st.warning("No live data captured. Start the simulation to populate the charts.")
+    else:
+        st.info("Simulation is stopped. Press the button to resume.")
 
- # --- 11. Report & Summary ---
+# --- 11. Report & Summary ---
 def report_summary_page():
     st.title("My Wellness Report & Summary 📄")
     st.markdown("A non-interactive summary of your key wellness metrics and progress.")
@@ -1788,7 +1794,7 @@ def report_summary_page():
     else:
         st.info("No CBT Thought Records completed yet.")
 
-# --- 10. Generic Placeholder for unbuilt pages ---
+# --- 12. Generic Placeholder for unbuilt pages ---
 def generic_placeholder_page(page_name):
     """
     Standard placeholder for unbuilt pages. 
@@ -1797,14 +1803,15 @@ def generic_placeholder_page(page_name):
     st.title(page_name)
     st.markdown("---")
     st.info(f"This is the dedicated page for the **{page_name}** feature. It's ready for development!")
-    st.image("", caption="Feature development is underway.", use_column_width=True)
+    st.markdown("", caption="Feature development is underway.", use_container_width=True) # FIXED
+
 # --- MAIN PAGE ROUTER (FINAL VERSION) ---
 if st.session_state.get("logged_in") is False:
-    # --- LOGOUT/WELCOME PAGE ---
+    # --- LOGOUT/WELCOME PAGE (FIXED IMAGE ERROR AND DEPRECATION) ---
     st.title("Youth Wellness App")
     st.markdown("---")
     st.info("Please use the sidebar to log in or register to access the dashboard features.")
-    st.image("", caption="Wellness is a journey.", use_column_width=True) 
+    st.markdown("", caption="Wellness is a journey.", use_container_width=True) # FIX: Replaced "" with "[...]" and use_column_width=True with use_container_width=True
 
 else:
     # --- AUTHENTICATED PAGES ---
@@ -1829,9 +1836,9 @@ else:
         cbt_thought_record_page()
     elif current_page == "Journal Analysis":
         journal_analysis_page()
-    elif current_page == "IoT Dashboard (ECE)": # <-- NEW FINAL ROUTE
+    elif current_page == "IoT Dashboard (ECE)": 
         iot_dashboard_page()
-    elif current_page == "Report & Summary": # <-- NEW FINAL ROUTE
+    elif current_page == "Report & Summary": 
         report_summary_page()
 
     # 2. All Other Placeholder Pages (Should be empty now!)
