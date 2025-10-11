@@ -39,7 +39,8 @@ MOOD_EMOJI_MAP = {
     1: "😭 Agonizing", 2: "😩 Miserable", 3: "😞 Very Sad",
     4: "🙁 Sad", 5: "😐 Neutral/Okay", 6: "🙂 Content",
     7: "😊 Happy", 8: "😁 Very Happy", 9: "🤩 Excited",
-    10: "🥳 Joyful", 11: "🌟 Fantastic"
+    10: "🥳 Joyful",
+    11: "🌟 Fantastic"
 }
 
 PHQ9_QUESTIONS = [
@@ -1212,11 +1213,11 @@ def wellness_checkin_page():
             st.markdown(f"**{question}**")
             
             response = st.radio(
-                "Select one:",
                 options=list(PHQ9_SCORES.keys()),
                 key=key,
                 index=0,
-                horizontal=True
+                horizontal=True,
+                label="Select one:" # Added label
             )
             
             phq9_responses[i] = response
@@ -1819,5 +1820,34 @@ if st.session_state.get("logged_in") is False:
     st.caption("Wellness is a journey.")
 
 else:
-    # ... rest of the authenticated pages logic ... 
-    # (The rest of the router logic remains the same)
+    # --- AUTHENTICATED PAGES ---
+    current_page = st.session_state["page"]
+    
+    # 1. Fully Built Pages (Functional features)
+    if current_page == "Home":
+        homepage_panel()
+    elif current_page == "Mindful Journaling":
+        mindful_journaling_page()
+    elif current_page == "Mood Tracker":
+        mood_tracker_page()
+    elif current_page == "Wellness Check-in":
+        wellness_checkin_page()
+    elif current_page == "AI Chat":
+        ai_chat_page() 
+    elif current_page == "Wellness Ecosystem":
+        wellness_ecosystem_page()
+    elif current_page == "Mindful Breathing":
+        mindful_breathing_page()
+    elif current_page == "CBT Thought Record":
+        cbt_thought_record_page()
+    elif current_page == "Journal Analysis":
+        journal_analysis_page()
+    elif current_page == "IoT Dashboard (ECE)": 
+        iot_dashboard_page()
+    elif current_page == "Report & Summary": 
+        report_summary_page()
+
+    # 2. All Other Placeholder Pages (Should be empty now!)
+    else:
+        # Fallback in case a key is accidentally missed, but should not be hit.
+        generic_placeholder_page(current_page)

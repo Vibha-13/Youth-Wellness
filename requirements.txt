@@ -1,7 +1,9 @@
 streamlit
 pandas
-numpy
 plotly
-openai
-supabase
 vaderSentiment
+openai
+numpy
+# Optional but highly recommended if you are connecting to Supabase
+# If you are NOT using a Supabase database, you can remove this line.
+supabase
