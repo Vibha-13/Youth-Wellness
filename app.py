@@ -16,7 +16,14 @@ from openai import OpenAI
 from openai import APIError
 
 # Placeholder for Supabase client
-from supabase import create_client
+# NOTE: Make sure you have 'supabase' installed: pip install supabase
+try:
+    from supabase import create_client
+except ImportError:
+    st.error("Supabase library not found. Please run: pip install supabase")
+    # Define a dummy function to prevent errors if not installed
+    def create_client(*args, **kwargs):
+        return None
 
 # ---------- CONSTANTS ----------
 OPENROUTER_BASE_URL = "https://https://openrouter.ai/api/v1"
@@ -265,7 +272,6 @@ def initialize_kalman(Q_val=0.01, R_val=0.1):
 
 def kalman_filter_simple(z_meas, state):
     """Applies a single step of the Kalman filter to a noisy measurement."""
-    
     # 1. Prediction
     x_pred = state['x_est'] 
     P_pred = state['P_est'] + state['Q']
@@ -284,7 +290,6 @@ def generate_simulated_physiological_data(current_time_ms):
     """
     Simulates noisy PPG (Heart Rate) and GSR (Stress) data.
     """
-    
     time_sec = current_time_ms / 1000.0 
     
     # Base HR (BPM) that gently changes over time (70-100 BPM)
@@ -478,11 +483,12 @@ def safe_generate(prompt: str, max_tokens: int = 300):
         prompt_clean = clean_text_for_ai(prompt)
 
         # Append new user message before sending to API
-        if messages_for_api[-1]["content"] != prompt_clean or messages_for_api[-1]["role"] != "user":
+        if messages_for_api and (messages_for_api[-1]["content"] != prompt_clean or messages_for_api[-1]["role"] != "user"):
             messages_for_api.append({"role": "user", "content": prompt_clean})
 
         try:
-            context_messages = [messages_for_api[0]] + messages_for_api[-10:]
+            # Check if there are messages besides the system prompt (index 0)
+            context_messages = [messages_for_api[0]] + messages_for_api[-10:] if len(messages_for_api) > 1 else messages_for_api
             
             resp = client.chat.completions.create(
                 model=OPENROUTER_MODEL_NAME,
@@ -495,8 +501,10 @@ def safe_generate(prompt: str, max_tokens: int = 300):
                 return resp.choices[0].message.content
             
         except APIError:
+            # Fallback on API Error
             st.error("OpenRouter API Error. Please check your key or try a different model.")
         except Exception:
+            # General fallback
             pass
             
     canned = [
@@ -520,18 +528,13 @@ def get_all_user_text() -> str:
 
 
 # ---------- Supabase helpers (DB functions remain the same) ----------
-# NOTE: The authentication logic in sidebar_auth() handles fetching the user profile 
-# based on Supabase's internal Auth system which is now fixed. 
-# The old `users` table logic for login/register is kept but is secondary 
-# to the correct profiles table setup.
 
 def register_user_db(email: str):
     supabase_client = st.session_state.get("_supabase_client_obj")
     if not supabase_client:
         return None
     try:
-        # Note: This old logic inserts into a separate 'users' table, not the required 'profiles' table.
-        # This function is being kept for compatibility with the sidebar_auth() logic you provided.
+        # Note: This logic inserts into a secondary 'users' table for this project
         res = supabase_client.table("users").insert({"email": email}).execute()
         if getattr(res, "data", None):
             return res.data[0].get("id")
@@ -543,13 +546,13 @@ def get_user_by_email_db(email: str):
     if not supabase_client:
         return []
     try:
-        # Note: This old logic fetches from the secondary 'users' table.
+        # Note: This logic fetches from the secondary 'users' table.
         res = supabase_client.table("users").select("*").eq("email", email).execute()
         return res.data or []
     except Exception:
         return []
 
-# --- NEW JOURNALING SAVE FUNCTION ---
+# --- SAVE FUNCTIONS ---
 def save_journal_db(user_id, text: str, sentiment: float) -> bool:
     supabase_client = st.session_state.get("_supabase_client_obj")
     if not supabase_client:
@@ -624,7 +627,6 @@ def load_all_user_data(user_id, supabase_client):
         
     return data
 
-# [NEW HELPER FUNCTION: Plant Health]
 def calculate_plant_health():
     """Calculates plant health based on goal completion and mood trends."""
     health_base = 50.0 # Start with a neutral baseline
@@ -651,9 +653,7 @@ def calculate_plant_health():
 
     # Clamp health between 0 and 100
     st.session_state["plant_health"] = max(0, min(100, health_base))
-
     
-# [NEW HELPER FUNCTION: Goal Management/Reset]
 def check_and_reset_goals():
     """Resets daily goals if the last reset date was before today."""
     today = datetime.now().date()
@@ -663,12 +663,17 @@ def check_and_reset_goals():
     for key, goal in goals.items():
         last_reset = goal.get("last_reset")
         if last_reset:
-            last_reset_date = datetime.strptime(last_reset, "%Y-%m-%d").date()
+            # Safely parse the date, handling potential errors
+            try:
+                last_reset_date = datetime.strptime(last_reset, "%Y-%m-%d").date()
+            except ValueError:
+                # If date format is wrong, reset it to today
+                last_reset_date = today - timedelta(days=1) 
+                
             if last_reset_date < today:
                 # Reset for a new day
                 goal["count"] = 0
                 goal["last_reset"] = today.strftime("%Y-%m-%d")
-            # else: continue as it's the same day
 
         elif last_reset is None:
             # Initialize reset for first time run
@@ -699,7 +704,7 @@ st.sidebar.markdown(
 
 st.sidebar.markdown("---")
 
-# Sidebar Navigation
+# Sidebar Navigation (FULL LIST RESTORED)
 st.sidebar.header("Navigation")
 page_options = {
     "Home": "🏠", 
@@ -707,7 +712,7 @@ page_options = {
     "Mood Tracker": "📈", 
     "Mindful Journaling": "📝", 
     "CBT Thought Record": "✍️",
-    "Wellness Ecosystem": "🌱", # [NEW PAGE]
+    "Wellness Ecosystem": "🌱", 
     "Journal Analysis": "📊",
     "Mindful Breathing": "🧘‍♀️", 
     "IoT Dashboard (ECE)": "⚙️", 
@@ -724,77 +729,86 @@ st.session_state["page"] = st.sidebar.radio(
 )
 
 
-# Sidebar Auth
+# Sidebar Auth (SIMPLIFIED EMAIL LOGIN)
 def sidebar_auth():
     st.sidebar.markdown("---")
     st.sidebar.header("Account")
+    
     if not st.session_state.get("logged_in"):
-        email = st.sidebar.text_input("Your email", key="login_email")
-        # In a real app, you would use st.secrets for Supabase Auth, but this is kept for compatibility with the user's provided logic
-        if st.sidebar.button("Login / Register"):
-            if email:
-                user = None
-                db_connected = st.session_state.get("_db_connected")
-                
-                if db_connected:
-                    user_list = get_user_by_email_db(email)
-                    if user_list:
-                        user = user_list[0]
-                
-                if user or db_connected is False:
-                    # Authentication SUCCESS
-                    st.session_state["user_id"] = user.get("id") if user else "local_user"
-                    st.session_state["user_email"] = email
-                    st.session_state["logged_in"] = True
+        st.sidebar.caption("Use only your email to log in or register locally.")
+        with st.sidebar.form("login_form", clear_on_submit=True):
+            email = st.text_input("Your email", key="login_email_input").lower().strip()
+            
+            submitted = st.form_submit_button("Access Dashboard")
+            
+            if submitted:
+                if email and "@" in email:
+                    # Clear existing session data before logging in
+                    for key in ["user_id", "user_email", "phq9_score", "phq9_interpretation", "kalman_state"]:
+                        if key in st.session_state:
+                            st.session_state[key] = None
+                            
+                    user = None
+                    db_connected = st.session_state.get("_db_connected")
                     
-                    if user and db_connected:
-                        # Load ALL data
-                        user_data = load_all_user_data(st.session_state["user_id"], st.session_state.get("_supabase_client_obj"))
-                        st.session_state["daily_journal"] = user_data["journal"]
-                        st.session_state["mood_history"] = user_data["mood"]
-                        st.session_state["ece_history"] = user_data["ece"] 
-                            
-                        if user_data["phq9"]:
-                            latest_phq9 = user_data["phq9"][0]
-                            st.session_state["phq9_score"] = latest_phq9.get("score")
-                            st.session_state["phq9_interpretation"] = latest_phq9.get("interpretation")
-                            st.session_state["last_phq9_date"] = pd.to_datetime(latest_phq9.get("created_at")).strftime("%Y-%m-%d")
-                            
-                        st.sidebar.success("Logged in and data loaded. ✅")
-                    elif db_connected is False:
-                        st.sidebar.info("Logged in locally (no DB). 🏠")
-                        
-                    st.rerun()
-
-                else:
-                    # Try to register
-                    uid = register_user_db(email)
-                    if uid:
-                        st.session_state["user_id"] = uid
+                    if db_connected:
+                        user_list = get_user_by_email_db(email)
+                        if user_list:
+                            user = user_list[0]
+                    
+                    if user or db_connected is False:
+                        # Authentication SUCCESS (either via DB lookup or local fallback)
+                        st.session_state["user_id"] = user.get("id") if user else f"local_user_{email.split('@')[0]}"
                         st.session_state["user_email"] = email
                         st.session_state["logged_in"] = True
-                        st.sidebar.success("Registered & logged in. 🎉")
+                        
+                        if user and db_connected:
+                            # Load ALL data from DB
+                            user_data = load_all_user_data(st.session_state["user_id"], st.session_state.get("_supabase_client_obj"))
+                            st.session_state["daily_journal"] = user_data["journal"]
+                            st.session_state["mood_history"] = user_data["mood"]
+                            st.session_state["ece_history"] = user_data["ece"] 
+                                
+                            if user_data["phq9"]:
+                                latest_phq9 = user_data["phq9"][0]
+                                st.session_state["phq9_score"] = latest_phq9.get("score")
+                                st.session_state["phq9_interpretation"] = latest_phq9.get("interpretation")
+                                st.session_state["last_phq9_date"] = pd.to_datetime(latest_phq9.get("created_at")).strftime("%Y-%m-%d")
+                                
+                            st.sidebar.success("Logged in and data loaded. ✅")
+                        elif db_connected is False:
+                            st.sidebar.info("Logged in locally (no DB). 🏠")
+                            
                         st.rerun()
+
                     else:
-                        st.sidebar.error("Registration failed. Try again or check DB connection.")
-            else:
-                st.sidebar.warning("Enter an email")
+                        # Try to register if DB connected
+                        if db_connected:
+                            uid = register_user_db(email)
+                            if uid:
+                                st.session_state["user_id"] = uid
+                                st.session_state["user_email"] = email
+                                st.session_state["logged_in"] = True
+                                st.sidebar.success("Registered & logged in. 🎉")
+                                st.rerun()
+                            else:
+                                st.sidebar.error("Registration failed. Please check DB connection or RLS rules.")
+                        else:
+                             st.sidebar.error("Could not find user and DB not connected to register.")
+
+                else:
+                    st.sidebar.warning("Please enter a valid email address.")
     else:
         # Logout logic
         st.sidebar.write("Logged in as:")
         st.sidebar.markdown(f"**{st.session_state.get('user_email')}**")
-        if st.sidebar.button("Logout"):
-            for key in ["logged_in", "user_id", "user_email", "phq9_score", "phq9_interpretation", "kalman_state"]:
+        if st.sidebar.button("Logout", key="sidebar_logout_btn"):
+            # Reset major state variables
+            for key in ["logged_in", "user_id", "user_email", "phq9_score", "phq9_interpretation", "kalman_state", "daily_journal", "mood_history", "physiological_data", "ece_history", "daily_goals", "plant_health", "chat_messages"]:
                 if key in st.session_state:
                     st.session_state[key] = None
-            
-            # Reset major states
-            st.session_state["daily_journal"] = []
-            st.session_state["mood_history"] = []
-            st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level"])
-            st.session_state["kalman_state"] = initialize_kalman()
-            st.session_state["ece_history"] = [] 
-            st.session_state["daily_goals"] = DEFAULT_GOALS # Reset goals/plant
+                    
+            st.session_state["daily_goals"] = DEFAULT_GOALS 
             st.session_state["plant_health"] = 70.0 
             
             # Reset AI history
@@ -805,12 +819,16 @@ def sidebar_auth():
             st.session_state["_ai_available"] = _ai_available
             st.session_state["chat_messages"] = _chat_history_list if _ai_available else [{"role": "assistant", "content": "Hello 👋 I’m here to listen. What’s on your mind today?"}]
 
+
             st.sidebar.info("Logged out. 👋")
             st.rerun()
 
 sidebar_auth()
 
-# ---------- PANELS: Homepage ----------
+
+# ---------- FEATURE PAGE FUNCTIONS ----------
+
+# --- 1. Homepage ---
 def homepage_panel():
     st.markdown(f"<h1>Your Wellness Sanctuary <span style='color: #5D54A4;'>🧠</span></h1>", unsafe_allow_html=True)
     st.markdown("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
@@ -828,7 +846,7 @@ def homepage_panel():
     df_mood = pd.DataFrame(st.session_state["mood_history"])
     avg_mood_7d = df_mood.head(7)['mood'].mean() if not df_mood.empty else None
     
-    # --- NEW: Check if mood data exists for formatting ---
+    # --- Check if mood data exists for formatting ---
     if avg_mood_7d is None:
         avg_mood_display = "N/A"
         mood_icon = "❓"
@@ -862,13 +880,12 @@ def homepage_panel():
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        # Use the corrected display variable
         st.markdown(f"<div class='card'><h3>Average Mood (7D)</h3><h2>{mood_icon} {avg_mood_display}{'/11' if avg_mood_7d is not None else ''}</h2><p>Past week's emotional stability.</p></div>", unsafe_allow_html=True)
 
     with col2:
         phq9_text = st.session_state.get("phq9_interpretation") or "Not Taken"
-        phq9_color = "green" if phq9_text in ["Minimal to None", "Mild"] else ("orange" if st.session_state.get("phq9_score") is not None else "gray")
         phq9_score_display = st.session_state.get('phq9_score', 'N/A')
+        phq9_color = "green" if phq9_text in ["Minimal to None", "Mild"] else ("orange" if phq9_score_display != 'N/A' else "gray")
         
         st.markdown(f"<div class='card' style='border-left: 5px solid {phq9_color};'><h3>Last Wellness Score</h3><h2>{phq9_score_display}</h2><p>{phq9_text} (from last check-in)</p></div>", unsafe_allow_html=True)
 
@@ -882,8 +899,8 @@ def homepage_panel():
     st.subheader("Badges & Achievements")
     st.info("You haven't earned any badges yet! Start logging your mood and thoughts to unlock them.")
 
-# --- JOURNALING HELPER (Placement is important: must be before its use) ---
-def save_journal_entry(entry_text, user_id, supabase_client):
+# --- Journal Helper ---
+def save_journal_entry(entry_text, user_id, supabase_client, mood_rating):
     """Saves a new journal entry to the Supabase database and updates state."""
     if not entry_text or not user_id:
         st.error("Journal entry cannot be empty.")
@@ -895,26 +912,31 @@ def save_journal_entry(entry_text, user_id, supabase_client):
     try:
         # 2. Save to DB
         if st.session_state.get("_db_connected"):
-            # Use the dedicated Supabase function
             save_journal_db(user_id, entry_text, sentiment)
         
         # 3. Update Session State (for immediate display)
         new_entry = {"date": datetime.now().isoformat(), "text": entry_text, "sentiment": sentiment}
         st.session_state["daily_journal"].insert(0, new_entry)
         
-        # 4. Update Goal Tracker
+        # 4. Save the optional mood rating
+        if mood_rating and user_id:
+            if st.session_state.get("_db_connected"):
+                save_mood_db(user_id, mood_rating, f"Mood logged via Journal Page (Sentiment: {sentiment:.2f})")
+            
+            # Also update session state mood history locally (optional for journal entries)
+            # This is handled more robustly by the mood_tracker_page logic
+        
+        # 5. Update Goal Tracker
         st.session_state["daily_goals"]["journal_entry"]["count"] = 1 # Mark as complete for the day
-        calculate_plant_health() # Recalculate health
+        calculate_plant_health() 
 
         st.success(f"Journal entry saved! Sentiment Score: {sentiment:.2f} ({'Positive' if sentiment > 0.05 else ('Negative' if sentiment < -0.05 else 'Neutral')})")
         
     except Exception as e:
         st.error(f"Error saving entry: {e}")
 
-
-# --- Main Journaling Page (Renamed from overview_page) ---
+# --- 2. Mindful Journaling ---
 def mindful_journaling_page():
-    """Renders the mindful journaling form and recent entries."""
     st.title("Mindful Journaling & Reflection 📝")
     
     user_id = st.session_state.get("user_id")
@@ -929,8 +951,7 @@ def mindful_journaling_page():
             placeholder="I feel anxious because..."
         )
         
-        # Optional: Add a simple mood rating with the journal entry
-        mood_rating = st.slider("Rate your overall mood right now (Optional):", 1, 11, 6, format=f"{MOOD_EMOJI_MAP.get(6).split(' ')[0]} %d")
+        mood_rating = st.slider("Rate your overall mood right now (Optional):", 1, 11, 6, format=f"{MOOD_EMOJI_MAP.get(6).split(' ')[0]} %d", key="journal_mood_slider")
         
         submitted = st.form_submit_button("Save Reflection")
         
@@ -938,21 +959,14 @@ def mindful_journaling_page():
             if not journal_entry:
                 st.warning("Please write something before saving.")
             else:
-                # 1. Save the journal entry
-                save_journal_entry(journal_entry, user_id, supabase_client)
-                
-                # 2. Optional: Also save the mood rating if provided (as a separate mood log)
-                if st.session_state.get("_db_connected"):
-                    save_mood_db(user_id, mood_rating, f"Mood logged via Journal Page (Score: {sentiment_compound(journal_entry):.2f})")
-                
-                # Rerun to clear the form and update the list
+                save_journal_entry(journal_entry, user_id, supabase_client, mood_rating)
                 st.rerun() 
 
     st.markdown("---")
     st.subheader("Your Recent Entries")
 
     if st.session_state["daily_journal"]:
-        for entry in st.session_state["daily_journal"][:5]: # Show top 5
+        for entry in st.session_state["daily_journal"][:5]: 
             sentiment_text = "Positive" if entry["sentiment"] > 0.05 else ("Negative" if entry["sentiment"] < -0.05 else "Neutral")
             sentiment_color = "green" if entry["sentiment"] > 0.05 else ("red" if entry["sentiment"] < -0.05 else "gray")
             
@@ -966,26 +980,263 @@ def mindful_journaling_page():
             """, unsafe_allow_html=True)
     else:
         st.info("No journal entries yet. Write your first one above!")
-# --- END of mindful_journaling_page() ---
 
+# --- Mood Tracker Helper ---
+def update_mood_streak():
+    """Checks the mood history to calculate the current logging streak."""
+    
+    if not st.session_state["mood_history"]:
+        st.session_state["streaks"]["mood_log"] = 0
+        return
+        
+    df = pd.DataFrame(st.session_state["mood_history"])
+    df['date_only'] = pd.to_datetime(df['date']).dt.date
+    logged_dates = sorted(df['date_only'].unique(), reverse=True)
+    
+    if not logged_dates:
+        st.session_state["streaks"]["mood_log"] = 0
+        return
 
-# --- Placeholder Pages (You will build these next) ---
+    today = datetime.now().date()
+    streak = 0
+    current_date = today
 
+    # Check if a log exists for today
+    has_logged_today = logged_dates[0] == today if logged_dates else False
+    if has_logged_today:
+        streak += 1
+        current_date = current_date - timedelta(days=1)
+        logged_dates = logged_dates[1:] 
+
+    # Iterate backwards through logged days to count the streak
+    for log_date in logged_dates:
+        expected_date = current_date
+        
+        if log_date == expected_date:
+            streak += 1
+            current_date = current_date - timedelta(days=1)
+        elif log_date < expected_date:
+            break
+            
+    st.session_state["streaks"]["mood_log"] = streak
+    
+    if has_logged_today:
+        st.session_state["daily_goals"]["log_mood"]["count"] = 1
+    
+    calculate_plant_health() 
+
+# --- 3. Mood Tracker ---
+def mood_tracker_page():
+    st.title("Mood Tracker & Analysis 📈")
+    st.markdown("Log your current emotional state and review your trends over time.")
+    
+    user_id = st.session_state.get("user_id")
+    supabase_client = st.session_state.get("_supabase_client_obj")
+
+    # --- MOOD LOGGING FORM ---
+    st.subheader("How are you feeling right now?")
+    with st.container(border=True):
+        col_slider, col_mood_display = st.columns([3, 1])
+        
+        with col_slider:
+            mood_score = st.slider(
+                "Select your mood score (1=Agonizing, 11=Joyful)",
+                1, 11, 6,
+                key="current_mood_slider"
+            )
+        
+        with col_mood_display:
+            mood_text = MOOD_EMOJI_MAP.get(mood_score, "❓ Unknown")
+            st.markdown(f"**Your Choice:**<br/><h2>{mood_text}</h2>", unsafe_allow_html=True)
+            
+        mood_note = st.text_input(
+            "Quick note on *why* you feel this way (optional)",
+            placeholder="E.g., I'm happy because I finished my assignment, or, I'm stressed about the test tomorrow."
+        )
+
+        if st.button("Log My Mood", use_container_width=True):
+            if not user_id:
+                st.error("Please log in to save your mood.")
+            else:
+                # 1. Save to DB
+                if st.session_state.get("_db_connected"):
+                    save_mood_db(user_id, mood_score, mood_note)
+
+                # 2. Update Session State (for immediate display)
+                new_entry = {"date": datetime.now().isoformat(), "mood": mood_score, "note": mood_note}
+                st.session_state["mood_history"].insert(0, new_entry)
+                
+                # 3. Update Streak & Goals
+                update_mood_streak()
+
+                st.success(f"Mood logged as: {mood_text}!")
+                st.rerun() 
+                
+    st.markdown("---")
+
+    # --- MOOD STREAK AND HISTORY ---
+    col_streak, col_badge = st.columns([1, 2])
+    
+    update_mood_streak() # Ensure streak is calculated on load
+    with col_streak:
+        current_streak = st.session_state["streaks"]["mood_log"]
+        st.markdown(f"<div class='card' style='padding: 15px; text-align: center;'><h3>🔥 Current Streak</h3><h1>{current_streak} days</h1><p>Consecutive days logging your mood.</p></div>", unsafe_allow_html=True)
+
+    with col_badge:
+        st.info("Badges coming soon: Track your streaks and engagement here!")
+        
+    st.markdown("---")
+    
+    # --- MOOD TREND CHART ---
+    st.subheader("Your Mood Trends Over Time")
+
+    if st.session_state["mood_history"]:
+        df_mood = pd.DataFrame(st.session_state["mood_history"])
+        df_mood['date'] = pd.to_datetime(df_mood['date'])
+        
+        df_mood = df_mood.sort_values(by='date').tail(30).reset_index(drop=True) 
+
+        fig = px.line(
+            df_mood,
+            x='date',
+            y='mood',
+            title='Last 30 Mood Logs',
+            markers=True,
+            height=400
+        )
+        
+        fig.update_layout(
+            yaxis=dict(
+                tickvals=list(MOOD_EMOJI_MAP.keys()),
+                ticktext=[f"{emoji.split(' ')[0]} {score}" for score, emoji in MOOD_EMOJI_MAP.items()],
+                range=[0.8, 11.2],
+                title="Mood Score"
+            ),
+            xaxis_title="Date/Time",
+            hovermode="x unified",
+            margin=dict(l=0, r=0, t=30, b=0)
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("Start logging your mood above to see your trend chart!")
+
+# --- 4. AI Chat ---
 def ai_chat_page():
     st.title("AI Wellness Buddy 💬")
-    st.info("This page will host the AI chat interface for real-time support.")
-    # (The chat logic is mostly functional in the helpers, but needs a front-end)
+    st.markdown("I'm here to listen without judgment. How can I support you today?")
+    
+    # Display chat messages
+    for message in st.session_state.chat_messages:
+        if message["role"] != "system":
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
-def mood_tracker_page():
-    st.title("Mood Tracker 📈")
-    st.info("This page will feature a slider/form to log your mood and display a time series chart of your emotional state.")
+    # Chat input logic
+    if prompt := st.chat_input("Say something..."):
+        # Append user message to display immediately
+        st.session_state.chat_messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-def cbt_thought_record_page():
-    st.title("CBT Thought Record ✍️")
-    st.info("This page will guide you step-by-step through challenging automatic negative thoughts using the Cognitive Behavioral Therapy prompts.")
+        # Generate response
+        with st.spinner("Buddy is thinking..."):
+            response = safe_generate(prompt)
+            
+        # Append assistant response
+        st.session_state.chat_messages.append({"role": "assistant", "content": response})
+        with st.chat_message("assistant"):
+            st.markdown(response)
+
+# --- 5. Wellness Check-in (PHQ-9) ---
+def interpret_phq9_score(score: int) -> str:
+    """Interprets the total PHQ-9 score based on standard clinical ranges."""
+    for score_range, interpretation in PHQ9_INTERPRETATION.items():
+        if score_range[0] <= score <= score_range[1]:
+            return interpretation
+    return "Unknown"
+
+def wellness_checkin_page():
+    st.title("Wellness Check-in (PHQ-9) 🩺")
+    st.markdown("This quick assessment helps track your mood over the past **two weeks**.")
+    st.markdown("---")
+    
+    last_date = st.session_state.get("last_phq9_date")
+    if last_date:
+        st.info(f"Your last check-in was on **{last_date}**. Your score was **{st.session_state.get('phq9_score') or 'N/A'}** ({st.session_state.get('phq9_interpretation') or 'N/A'}).")
+
+    st.subheader("Over the last two weeks, how often have you been bothered by the following problems?")
+    
+    phq9_responses = {}
+    
+    with st.form("phq9_form"):
+        
+        for i, question in enumerate(PHQ9_QUESTIONS):
+            key = f"q_{i}"
+            is_crisis_question = (i == SUICIDE_IDEATION_QUESTION_INDEX) 
+            
+            st.markdown(f"**{question}**")
+            
+            response = st.radio(
+                "Select one:",
+                options=list(PHQ9_SCORES.keys()),
+                key=key,
+                index=0,
+                horizontal=True
+            )
+            
+            phq9_responses[i] = response
+            st.markdown("---")
 
 
-# --- MAIN PAGE ROUTER (The final part of your app.py) ---
+        submitted = st.form_submit_button("Submit Check-in")
+
+        if submitted:
+            total_score = 0
+            for i, response in phq9_responses.items():
+                total_score += PHQ9_SCORES[response]
+                
+            interpretation = interpret_phq9_score(total_score)
+            user_id = st.session_state.get("user_id")
+            
+            if st.session_state.get("_db_connected"):
+                save_phq9_db(user_id, total_score, interpretation)
+                
+            st.session_state["phq9_score"] = total_score
+            st.session_state["phq9_interpretation"] = interpretation
+            st.session_state["last_phq9_date"] = datetime.now().strftime("%Y-%m-%d")
+            
+            st.subheader(f"✅ Check-in Complete! Your score is **{total_score}** ({interpretation}).")
+            
+            is_high_risk = (total_score >= PHQ9_CRISIS_THRESHOLD) or (PHQ9_SCORES[phq9_responses[SUICIDE_IDEATION_QUESTION_INDEX]] >= 1)
+
+            if is_high_risk:
+                st.error("""
+                🚨 **IMPORTANT: High Distress Indication!**
+                Your responses indicate significant distress. Please know you are not alone.
+                **Action:** Contact a crisis line or a trusted adult immediately.
+                **Call or text 988 (US/Canada) or a local emergency number NOW.**
+                """, icon="🚨")
+            elif total_score >= 10:
+                st.warning(f"Your score is in the **{interpretation}** range. This is a good time to use the **CBT Thought Record** or talk to the **AI Chat**.")
+            else:
+                st.success("Your score is low. Keep up the good work on your self-care!")
+                
+            st.rerun()
+
+
+# --- 6. Generic Placeholder for unbuilt pages ---
+def generic_placeholder_page(page_name):
+    """
+    Standard placeholder for unbuilt pages. 
+    It avoids the 'Coming Soon' warning and provides a clean header.
+    """
+    st.title(page_name)
+    st.markdown("---")
+    st.info(f"This is the dedicated page for the **{page_name}** feature. It's ready for development!")
+    st.image("https://images.unsplash.com/photo-1542475752-6e279148d8c3?q=80&w=1974&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D", caption="Feature development is underway.", use_column_width=True)
+
+# --- MAIN PAGE ROUTER ---
 if st.session_state.get("logged_in") is False:
     # --- LOGOUT/WELCOME PAGE ---
     st.title("Youth Wellness App")
@@ -995,18 +1246,20 @@ if st.session_state.get("logged_in") is False:
 
 else:
     # --- AUTHENTICATED PAGES ---
-    if st.session_state["page"] == "Home":
+    current_page = st.session_state["page"]
+    
+    # 1. Fully Built Pages (Functional features)
+    if current_page == "Home":
         homepage_panel()
-    elif st.session_state["page"] == "Mindful Journaling":
+    elif current_page == "Mindful Journaling":
         mindful_journaling_page()
-    elif st.session_state["page"] == "AI Chat":
-        ai_chat_page()
-    elif st.session_state["page"] == "Mood Tracker":
+    elif current_page == "Mood Tracker":
         mood_tracker_page()
-    elif st.session_state["page"] == "CBT Thought Record":
-        cbt_thought_record_page()
-    # Add other elif blocks for all your other pages here as you build them
+    elif current_page == "Wellness Check-in":
+        wellness_checkin_page()
+    elif current_page == "AI Chat":
+        ai_chat_page() # Basic working chat interface
+
+    # 2. All Other Placeholder Pages (Using the generic function)
     else:
-        # Default fallback for pages not yet defined
-        st.header(f"Page: {st.session_state['page']} (Under Construction)")
-        st.warning("Feature coming soon!")
+        generic_placeholder_page(current_page)
