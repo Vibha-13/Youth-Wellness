@@ -810,7 +810,6 @@ def sidebar_auth():
 
 sidebar_auth()
 
-
 # ---------- PANELS: Homepage ----------
 def homepage_panel():
     st.markdown(f"<h1>Your Wellness Sanctuary <span style='color: #5D54A4;'>🧠</span></h1>", unsafe_allow_html=True)
@@ -829,6 +828,14 @@ def homepage_panel():
     df_mood = pd.DataFrame(st.session_state["mood_history"])
     avg_mood_7d = df_mood.head(7)['mood'].mean() if not df_mood.empty else None
     
+    # --- NEW: Check if mood data exists for formatting ---
+    if avg_mood_7d is None:
+        avg_mood_display = "N/A"
+        mood_icon = "❓"
+    else:
+        avg_mood_display = f"{avg_mood_7d:.1f}"
+        mood_icon = MOOD_EMOJI_MAP.get(int(round(avg_mood_7d)), "❓") 
+    
     col_nudge, col_quote = st.columns([3, 1])
 
     with col_nudge:
@@ -836,7 +843,7 @@ def homepage_panel():
             if st.session_state["daily_goals"].get("journal_entry", {}).get("count", 0) < 1:
                 st.info("💡 **Daily Goal:** Haven't journaled today? Take 5 minutes for a quick 'brain dump' on the **Mindful Journaling** page to clear your mind.")
             elif avg_mood_7d is not None and avg_mood_7d < 6:
-                st.warning(f"😔 **Mood Check:** Your 7-day average mood score is **{avg_mood_7d:.1f}/11**. Try the **Mindful Breathing** exercise now, or use the **CBT Thought Record** to challenge any stuck negative thoughts.")
+                st.warning(f"😔 **Mood Check:** Your 7-day average mood score is **{avg_mood_display}/11**. Try the **Mindful Breathing** exercise now, or use the **CBT Thought Record** to challenge any stuck negative thoughts.")
             elif st.session_state.get("phq9_score") is not None and st.session_state["phq9_score"] > 10:
                 st.warning(f"🩺 **Check-in Follow-up:** Your last check-in score was high. Remember to use the tools! The **AI Chat** is always available to listen.")
             else:
@@ -855,23 +862,25 @@ def homepage_panel():
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        mood_icon = MOOD_EMOJI_MAP.get(int(avg_mood_7d), "❓") if avg_mood_7d else "❓"
-        st.markdown(f"<div class='card'><h3>Average Mood (7D)</h3><h2>{mood_icon} {avg_mood_7d:.1f}/11</h2><p>Past week's emotional stability.</p></div>", unsafe_allow_html=True)
+        # Use the corrected display variable
+        st.markdown(f"<div class='card'><h3>Average Mood (7D)</h3><h2>{mood_icon} {avg_mood_display}{'/11' if avg_mood_7d is not None else ''}</h2><p>Past week's emotional stability.</p></div>", unsafe_allow_html=True)
 
     with col2:
         phq9_text = st.session_state.get("phq9_interpretation") or "Not Taken"
-        phq9_color = "green" if phq9_text in ["Minimal to None", "Mild"] else "orange"
-        st.markdown(f"<div class='card' style='border-left: 5px solid {phq9_color};'><h3>Last Wellness Score</h3><h2>{st.session_state.get('phq9_score', 'N/A')}</h2><p>{phq9_text} (from last check-in)</p></div>", unsafe_allow_html=True)
+        phq9_color = "green" if phq9_text in ["Minimal to None", "Mild"] else ("orange" if st.session_state.get("phq9_score") is not None else "gray")
+        phq9_score_display = st.session_state.get('phq9_score', 'N/A')
+        
+        st.markdown(f"<div class='card' style='border-left: 5px solid {phq9_color};'><h3>Last Wellness Score</h3><h2>{phq9_score_display}</h2><p>{phq9_text} (from last check-in)</p></div>", unsafe_allow_html=True)
 
     with col3:
-        plant_emoji = "🌳" if st.session_state["plant_health"] > 80 else ("🌱" if st.session_state["plant_health"] > 40 else "🌵")
-        st.markdown(f"<div class='card'><h3>Ecosystem Health</h3><h2>{plant_emoji} {int(st.session_state['plant_health'])}%</h2><p>Calculated from goal completion & mood.</p></div>", unsafe_allow_html=True)
+        plant_health_int = int(st.session_state['plant_health'])
+        plant_emoji = "🌳" if plant_health_int > 80 else ("🌱" if plant_health_int > 40 else "🌵")
+        st.markdown(f"<div class='card'><h3>Ecosystem Health</h3><h2>{plant_emoji} {plant_health_int}%</h2><p>Calculated from goal completion & mood.</p></div>", unsafe_allow_html=True)
     
     st.markdown("---")
     
     st.subheader("Badges & Achievements")
     st.info("You haven't earned any badges yet! Start logging your mood and thoughts to unlock them.")
-# --- END of homepage_panel() ---
 
 # --- JOURNALING HELPER (Placement is important: must be before its use) ---
 def save_journal_entry(entry_text, user_id, supabase_client):
