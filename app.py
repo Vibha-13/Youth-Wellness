@@ -16,7 +16,6 @@ from openai import OpenAI
 from openai import APIError
 
 # Placeholder for Supabase client
-# NOTE: Make sure you have 'supabase' installed: pip install supabase
 try:
     from supabase import create_client
 except ImportError:
@@ -692,6 +691,10 @@ def check_and_reset_goals():
     """Resets daily goals if the last reset date was before today."""
     today = datetime.now().date()
     
+    # FIX 1: Ensure daily_goals is a dictionary before proceeding (Resolves AttributeError)
+    if st.session_state.get("daily_goals") is None:
+        st.session_state["daily_goals"] = DEFAULT_GOALS.copy()
+
     goals = st.session_state["daily_goals"]
     
     for key, goal in goals.items():
@@ -777,7 +780,9 @@ def sidebar_auth():
         if submitted:
             if email and "@" in email:
                 # Clear existing session data before logging in
-                for key in ["user_id", "user_email", "phq9_score", "phq9_interpretation", "kalman_state", "daily_journal", "mood_history", "physiological_data", "ece_history", "daily_goals", "plant_health", "cbt_history", "last_reframing_card"]:
+                # NOTE: "daily_goals" is intentionally NOT cleared to None here, 
+                # but is reset below or handled defensively by check_and_reset_goals().
+                for key in ["user_id", "user_email", "phq9_score", "phq9_interpretation", "kalman_state", "daily_journal", "mood_history", "physiological_data", "ece_history", "plant_health", "cbt_history", "last_reframing_card"]:
                     if key in st.session_state:
                         st.session_state[key] = None
                         
@@ -839,6 +844,9 @@ def sidebar_auth():
         st.sidebar.markdown(f"**{st.session_state.get('user_email')}**")
         if st.sidebar.button("Logout", key="sidebar_logout_btn"):
             # Reset major state variables
+            # NOTE: "daily_goals" is included here to be set to None, but the 
+            # subsequent explicit reset AND the defensive check in check_and_reset_goals
+            # prevent the crash.
             for key in ["logged_in", "user_id", "user_email", "phq9_score", "phq9_interpretation", "kalman_state", "daily_journal", "mood_history", "physiological_data", "ece_history", "daily_goals", "plant_health", "chat_messages", "cbt_history", "last_reframing_card"]:
                 if key in st.session_state:
                     st.session_state[key] = None
@@ -893,7 +901,7 @@ def homepage_panel():
 
     with col_nudge:
         with st.container(border=True):
-            if st.session_state["daily_goals"].get("journal_entry", {}).get("count", 0) < 1:
+            if st.session_state.get("daily_goals", {}).get("journal_entry", {}).get("count", 0) < 1:
                 st.info("💡 **Daily Goal:** Haven't journaled today? Take 5 minutes for a quick 'brain dump' on the **Mindful Journaling** page to clear your mind.")
             elif avg_mood_7d is not None and avg_mood_7d < 6:
                 st.warning(f"😔 **Mood Check:** Your 7-day average mood score is **{avg_mood_display}/11**. Try the **Mindful Breathing** exercise now, or use the **CBT Thought Record** to challenge any stuck negative thoughts.")
@@ -920,12 +928,12 @@ def homepage_panel():
     with col2:
         phq9_text = st.session_state.get("phq9_interpretation") or "Not Taken"
         phq9_score_display = st.session_state.get('phq9_score', 'N/A')
-        phq9_color = "green" if phq9_text in ["Minimal to None", "Mild"] else ("orange" if phq9_score_display != 'N/A' and phq9_score_display >= 10 else "gray")
+        phq9_color = "green" if phq9_text in ["Minimal to None", "Mild"] else ("orange" if phq9_score_display != 'N/A' and phq9_score_display is not None and phq9_score_display >= 10 else "gray")
         
         st.markdown(f"<div class='card' style='border-left: 5px solid {phq9_color};'><h3>Last Wellness Score</h3><h2>{phq9_score_display}</h2><p>{phq9_text} (from last check-in)</p></div>", unsafe_allow_html=True)
 
     with col3:
-        plant_health_int = int(st.session_state['plant_health'])
+        plant_health_int = int(st.session_state.get('plant_health', 70.0))
         plant_emoji = "🌳" if plant_health_int > 80 else ("🌱" if plant_health_int > 40 else "🌵")
         st.markdown(f"<div class='card'><h3>Ecosystem Health</h3><h2>{plant_emoji} {plant_health_int}%</h2><p>Calculated from goal completion & mood.</p></div>", unsafe_allow_html=True)
     
@@ -974,6 +982,10 @@ def update_mood_streak():
             
     st.session_state["streaks"]["mood_log"] = streak
     
+    # Defensive check for daily_goals being set
+    if st.session_state.get("daily_goals") is None:
+        st.session_state["daily_goals"] = DEFAULT_GOALS.copy()
+        
     if has_logged_today:
         st.session_state["daily_goals"]["log_mood"]["count"] = 1
     
@@ -991,7 +1003,7 @@ def mindful_journaling_page():
     # Journal Helper function defined locally for context
     def save_journal_entry(entry_text, user_id, supabase_client, mood_rating, mood_note):
         if not entry_text or not user_id:
-            st.error("Journal entry cannot be empty.")
+            st.error("Journal entry cannot be empty or user not logged in.")
             return
 
         sentiment = sentiment_compound(entry_text)
@@ -1011,6 +1023,10 @@ def mindful_journaling_page():
                 st.session_state["mood_history"].insert(0, new_mood_entry)
                 update_mood_streak()
 
+            # Defensive check for daily_goals being set
+            if st.session_state.get("daily_goals") is None:
+                st.session_state["daily_goals"] = DEFAULT_GOALS.copy()
+                
             st.session_state["daily_goals"]["journal_entry"]["count"] = 1
             calculate_plant_health() 
 
@@ -1305,6 +1321,11 @@ def wellness_ecosystem_page():
     # 2. Daily Goals Tracker
     with col_goals:
         st.subheader("Your Daily Goals")
+        
+        # Defensive check for daily_goals being set
+        if st.session_state.get("daily_goals") is None:
+            st.session_state["daily_goals"] = DEFAULT_GOALS.copy()
+            
         goals = st.session_state["daily_goals"]
         
         for key, goal in goals.items():
@@ -1335,6 +1356,11 @@ def mindful_breathing_page():
                 st.session_state["breathing_state"] = "running"
                 st.session_state["breathing_start_time"] = time.time()
                 st.session_state["breathing_duration"] = 3 * 60 # 3 minutes
+                
+                # Defensive check for daily_goals being set
+                if st.session_state.get("daily_goals") is None:
+                    st.session_state["daily_goals"] = DEFAULT_GOALS.copy()
+                    
                 st.session_state["daily_goals"]["breathing_session"]["count"] = 1
                 calculate_plant_health()
                 st.rerun()
@@ -1749,7 +1775,7 @@ def report_summary_page():
             
         st.caption(f"Last taken on: {last_phq9_date}")
         
-        if phq9_score_display >= 10:
+        if phq9_score_display is not None and phq9_score_display >= 10:
              st.warning(f"Note: Your latest score of {phq9_score_display} suggests **{phq9_interpretation}** severity. Consistent use of journaling and CBT is recommended.")
     else:
         st.info("No Wellness Check-in data (PHQ-9) found.")
