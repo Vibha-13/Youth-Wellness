@@ -261,6 +261,13 @@ def initialize_kalman(Q_val=0.01, R_val=0.1):
 
 def kalman_filter_simple(z_meas, state):
     """Applies a single step of the Kalman filter to a noisy measurement."""
+    
+    # --- FIX 1: Defensive check for None state ---
+    if state is None:
+        state = initialize_kalman() # Re-initialize the Kalman filter state
+        st.session_state["kalman_state"] = state
+    # ---------------------------------------------
+    
     # 1. Prediction
     x_pred = state['x_est'] 
     P_pred = state['P_est'] + state['Q']
@@ -666,9 +673,16 @@ def calculate_plant_health():
     
     # 1. Goal Bonus (Up to +30)
     goal_completion_score = 0
-    total_goals = len(st.session_state["daily_goals"])
+    
+    # Defensive check for daily_goals being set
+    goals = st.session_state.get("daily_goals")
+    if goals is None:
+        goals = DEFAULT_GOALS.copy()
+        st.session_state["daily_goals"] = goals
+
+    total_goals = len(goals)
     if total_goals > 0:
-        for goal_key, goal in st.session_state["daily_goals"].items():
+        for goal_key, goal in goals.items():
             if goal["count"] >= goal["target"]:
                 goal_completion_score += 1
         
@@ -691,7 +705,7 @@ def check_and_reset_goals():
     """Resets daily goals if the last reset date was before today."""
     today = datetime.now().date()
     
-    # FIX 1: Ensure daily_goals is a dictionary before proceeding (Resolves AttributeError)
+    # FIX 1: Ensure daily_goals is a dictionary before proceeding (Resolves original AttributeError)
     if st.session_state.get("daily_goals") is None:
         st.session_state["daily_goals"] = DEFAULT_GOALS.copy()
 
@@ -780,8 +794,6 @@ def sidebar_auth():
         if submitted:
             if email and "@" in email:
                 # Clear existing session data before logging in
-                # NOTE: "daily_goals" is intentionally NOT cleared to None here, 
-                # but is reset below or handled defensively by check_and_reset_goals().
                 for key in ["user_id", "user_email", "phq9_score", "phq9_interpretation", "kalman_state", "daily_journal", "mood_history", "physiological_data", "ece_history", "plant_health", "cbt_history", "last_reframing_card"]:
                     if key in st.session_state:
                         st.session_state[key] = None
@@ -844,9 +856,6 @@ def sidebar_auth():
         st.sidebar.markdown(f"**{st.session_state.get('user_email')}**")
         if st.sidebar.button("Logout", key="sidebar_logout_btn"):
             # Reset major state variables
-            # NOTE: "daily_goals" is included here to be set to None, but the 
-            # subsequent explicit reset AND the defensive check in check_and_reset_goals
-            # prevent the crash.
             for key in ["logged_in", "user_id", "user_email", "phq9_score", "phq9_interpretation", "kalman_state", "daily_journal", "mood_history", "physiological_data", "ece_history", "daily_goals", "plant_health", "chat_messages", "cbt_history", "last_reframing_card"]:
                 if key in st.session_state:
                     st.session_state[key] = None
@@ -886,7 +895,7 @@ def homepage_panel():
     st.subheader("Your Daily Focus ✨")
     
     # Calculate relevant metrics
-    df_mood = pd.DataFrame(st.session_state["mood_history"])
+    df_mood = pd.DataFrame(st.session_state["mood_history"]) if st.session_state.get("mood_history") else pd.DataFrame()
     avg_mood_7d = df_mood.head(7)['mood'].mean() if not df_mood.empty else None
     
     # --- Check if mood data exists for formatting ---
@@ -946,7 +955,7 @@ def homepage_panel():
 def update_mood_streak():
     """Checks the mood history to calculate the current logging streak."""
     
-    if not st.session_state["mood_history"]:
+    if not st.session_state.get("mood_history"): # Use .get() and check truthiness
         st.session_state["streaks"]["mood_log"] = 0
         return
         
@@ -1013,6 +1022,11 @@ def mindful_journaling_page():
                 save_journal_db(user_id, entry_text, sentiment)
             
             new_entry = {"date": datetime.now().isoformat(), "text": entry_text, "sentiment": sentiment}
+            
+            # Defensive check for daily_journal being set to None
+            if st.session_state.get("daily_journal") is None:
+                st.session_state["daily_journal"] = []
+                
             st.session_state["daily_journal"].insert(0, new_entry)
             
             if mood_rating and user_id:
@@ -1020,6 +1034,11 @@ def mindful_journaling_page():
                     save_mood_db(user_id, mood_rating, f"Mood logged via Journal Page ({mood_note or 'No note'})")
                 
                 new_mood_entry = {"date": datetime.now().isoformat(), "mood": mood_rating, "note": f"Journal Mood: {mood_note}"}
+
+                # Defensive check for mood_history being set to None
+                if st.session_state.get("mood_history") is None:
+                    st.session_state["mood_history"] = []
+                    
                 st.session_state["mood_history"].insert(0, new_mood_entry)
                 update_mood_streak()
 
@@ -1059,7 +1078,7 @@ def mindful_journaling_page():
     st.markdown("---")
     st.subheader("Your Recent Entries")
 
-    if st.session_state["daily_journal"]:
+    if st.session_state.get("daily_journal"):
         for entry in st.session_state["daily_journal"][:5]: 
             sentiment_text = "Positive" if entry["sentiment"] > 0.05 else ("Negative" if entry["sentiment"] < -0.05 else "Neutral")
             sentiment_color = "green" if entry["sentiment"] > 0.05 else ("red" if entry["sentiment"] < -0.05 else "gray")
@@ -1101,7 +1120,7 @@ def mood_tracker_page():
             st.markdown(f"**Your Choice:**<br/><h2>{mood_text}</h2>", unsafe_allow_html=True)
             
         mood_note = st.text_input(
-            "Quick note on *why* you feel this way (optional)",
+            "Quick note on why you feel this way (optional)",
             placeholder="E.g., I'm happy because I finished my assignment, or, I'm stressed about the test tomorrow."
         )
 
@@ -1115,6 +1134,12 @@ def mood_tracker_page():
 
                 # 2. Update Session State (for immediate display)
                 new_entry = {"date": datetime.now().isoformat(), "mood": mood_score, "note": mood_note}
+                
+                # --- FIX 2: Defensive check for None state (prevents AttributeError) ---
+                if st.session_state.get("mood_history") is None:
+                    st.session_state["mood_history"] = []
+                # ---------------------------------------------------------------------
+
                 st.session_state["mood_history"].insert(0, new_entry)
                 
                 # 3. Update Streak & Goals
@@ -1141,7 +1166,7 @@ def mood_tracker_page():
     # --- MOOD TREND CHART ---
     st.subheader("Your Mood Trends Over Time")
 
-    if st.session_state["mood_history"]:
+    if st.session_state.get("mood_history"):
         df_mood = pd.DataFrame(st.session_state["mood_history"])
         df_mood['date'] = pd.to_datetime(df_mood['date'])
         
@@ -1494,7 +1519,7 @@ def journal_analysis_page():
     st.markdown("Review trends in your writing, emotions, and topics over time.")
     st.markdown("---")
     
-    if not st.session_state["daily_journal"]:
+    if not st.session_state.get("daily_journal"):
         st.info("You need at least a few journal entries to start the analysis. Try writing a quick entry on the Mindful Journaling page!")
         return
 
@@ -1557,7 +1582,7 @@ def journal_analysis_page():
     
     # Combine the text for AI summary (e.g., last 5 entries)
     # Ensure there are entries before accessing the list
-    if st.session_state["daily_journal"]:
+    if st.session_state.get("daily_journal"):
         recent_entries = " | ".join([e['text'] for e in st.session_state["daily_journal"][:5]])
     else:
         recent_entries = ""
@@ -1639,9 +1664,10 @@ def iot_dashboard_page():
         gsr_level = data_point["gsr_stress_level"]
         
         # 2. Apply Kalman Filter to the noisy HR measurement (raw_ppg is the measurement)
+        # Note: kalman_filter_simple now handles the case where st.session_state["kalman_state"] is None
         filtered_hr, st.session_state["kalman_state"] = kalman_filter_simple(
             raw_ppg, 
-            st.session_state["kalman_state"]
+            st.session_state.get("kalman_state")
         )
         
         # 3. Prepare data for plotting
@@ -1661,7 +1687,7 @@ def iot_dashboard_page():
         stress_metric.metric("GSR Stress Level", f"{gsr_level:.2f}")
         
         # Correlate stress with last logged mood
-        mood_text = MOOD_EMOJI_MAP.get(int(st.session_state["mood_history"][0]["mood"])) if st.session_state["mood_history"] and st.session_state["mood_history"][0].get("mood") else "N/A"
+        mood_text = MOOD_EMOJI_MAP.get(int(st.session_state["mood_history"][0]["mood"])) if st.session_state.get("mood_history") and st.session_state["mood_history"] and st.session_state["mood_history"][0].get("mood") else "N/A"
         mood_metric.metric("Last Logged Mood", mood_text)
         
         st.session_state["latest_ece_data"] = {"filtered_hr": filtered_hr, "gsr_stress_level": gsr_level}
@@ -1722,7 +1748,7 @@ def report_summary_page():
     st.subheader("1. Emotional & Engagement Overview")
     
     # Prepare Mood Data
-    if st.session_state["mood_history"]:
+    if st.session_state.get("mood_history"):
         df_mood = pd.DataFrame(st.session_state["mood_history"])
         df_mood['date'] = pd.to_datetime(df_mood['date']).dt.date
         avg_mood = df_mood['mood'].mean()
@@ -1784,7 +1810,7 @@ def report_summary_page():
     
     # --- Journaling Summary ---
     st.subheader("3. Journaling & Reflection")
-    if st.session_state["daily_journal"]:
+    if st.session_state.get("daily_journal"):
         df_journal = pd.DataFrame(st.session_state["daily_journal"])
         avg_sentiment = df_journal['sentiment'].mean()
         
