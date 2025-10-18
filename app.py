@@ -123,13 +123,6 @@ def setup_ai_model():
 
 def initialize_session_state():
     """Sets up default session state variables."""
-    # CRITICAL FIX: Clear cache to prevent UnhashableParamError from stale cache data
-    try:
-        load_all_user_data.clear()
-    except AttributeError:
-        # This can happen on first run before the function is fully defined
-        pass
-        
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
     if "user_id" not in st.session_state:
@@ -174,7 +167,7 @@ def generate_simulated_physiological_data():
     # Inverse correlation: Lower base HR and lower PHQ-9 lead to lower GSR/stress (closer to 1.0)
     gsr_base = 1.0 + (base_hr / 100.0) + 0.5 * (phq9_score / 27.0)
     gsr_noise = 0.5 * random.gauss(0, 1) # Add some noise to GSR
-    # FIX APPLIED HERE: Changed 'gr_base' to 'gsr_base' (previous fix)
+    # FIX APPLIED HERE: Changed 'gr_base' to 'gsr_base'
     gsr_value = gsr_base + gsr_noise 
     
     # Clip stress to reasonable limits
@@ -418,7 +411,7 @@ def logout():
     st.session_state["user_id"] = None
     st.session_state["user_email"] = None
     st.session_state["page"] = "Home"
-    st.session_state["chat_history"] = [{"role": "system", "content": "You are Harmony, a youth wellness coach focused on CBT and mindfulness. Your tone is supportive, encouraging, and non-judgemental. Keep responses concise and actionable. Do not give medical advice."}]
+    st.session_state["chat_history"] = [{"role": "system", "content": "You are Harmony, a youth wellness coach focused on CBT and mindfulness. Your tone is supportive, encouraging, and non-judgmental. Keep responses concise and actionable. Do not give medical advice."}]
     # Clear cached data
     load_all_user_data.clear() 
     st.rerun()
@@ -545,7 +538,8 @@ def mood_tracker_page():
     st.markdown("---")
     st.subheader("Your Mood History (Last 30 Days)")
 
-    # --- Daily Deduplication (The Fixed Section - previous fix) ---
+    # --- Daily Deduplication (The Fixed Section) ---
+    # Fixes KeyError by creating a temporary column to deduplicate on the date
     
     # 1. Create a temporary column with only the date part (no time)
     df_mood['date_only'] = df_mood['date'].dt.date
@@ -1286,7 +1280,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 1. Initialize session state, DB, and AI clients
-# NOTE: The cache clear is inside this function now.
 initialize_session_state()
 
 # 2. Render Sidebar
