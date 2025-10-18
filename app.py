@@ -536,35 +536,41 @@ def sentiment_compound(text: str) -> float:
 # ---------- Supabase helpers (DB functions remain the same) ----------
 
 def register_user_db(email: str):
+    """
+    Inserts a new user entry into the 'users' and 'profiles' tables 
+    with a generated UUID and current timestamp.
+    """
     supabase_client = st.session_state.get("_supabase_client_obj")
     if not supabase_client:
         return None
         
     # 1. Generate a valid UUID for the new user ID
-    # This replaces the need for Supabase auth to generate it
     new_user_id = str(uuid.uuid4())
     
+    # 2. Get current timestamp in ISO format for PostgreSQL
+    current_time = datetime.now().isoformat() 
+    
     try:
-        # 2. Insert into 'users' table (using the new permissive RLS policy)
+        # 3. Insert into 'users' table (CRITICAL: Includes id and created_at)
         res_user = supabase_client.table("users").insert({
-            "id": new_user_id, # <-- CRITICAL: Now passing the UUID
-            "email": email
+            "id": new_user_id,
+            "email": email,
+            "created_at": current_time 
         }).execute()
 
-        # 3. Also insert a required row into 'profiles' table (which was missing before!)
-        # This prevents potential RLS failure later on SELECT and is good practice.
+        # 4. Also insert into 'profiles' table (CRITICAL: Includes id and created_at)
         supabase_client.table("profiles").insert({
-            "id": new_user_id, # Use the same ID to link tables
-            "username": email.split("@")[0] # Set a default username from email
+            "id": new_user_id,
+            "username": email.split("@")[0],
+            "created_at": current_time
         }).execute()
         
         # Check if the user insert was successful
         if getattr(res_user, "data", None):
-            # Return the new ID to complete the login
             return new_user_id
             
     except Exception as e:
-        # st.error(f"DB Error: {e}") # You can uncomment this temporarily for debugging
+        st.error(f"DB Error: {e}") # Uncomment this line temporarily to see the real error if it still fails
         return None
 
 def get_user_by_email_db(email: str):
