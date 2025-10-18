@@ -537,41 +537,47 @@ def sentiment_compound(text: str) -> float:
 # ---------- Supabase helpers (DB functions remain the same) ----------
 
 def register_user_db(email: str):
-    # Retrieve the necessary credentials
+    """
+    Inserts a new user entry into the 'users' and 'profiles' tables 
+    using the Supabase Service Role Key to bypass strict RLS checks for registration.
+    """
+    # Retrieve the necessary credentials securely
+    # NOTE: You must set SUPABASE_URL and SUPABASE_SERVICE_KEY in your .streamlit/secrets.toml
     supabase_url = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL"))
-    # !! USE THE SERVICE ROLE KEY HERE !!
     supabase_service_key = st.secrets.get("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_KEY")) 
     
-    # 1. Create a client with service_role privileges
-    # This client BYPASSES all RLS checks for the insert operation.
+    if not supabase_url or not supabase_service_key:
+        st.error("Configuration Error: SUPABASE_URL or SUPABASE_SERVICE_KEY not found in secrets.")
+        return None
+        
+    # 1. Create a client with service_role privileges (BYPASSES RLS)
     admin_client = create_client(supabase_url, supabase_service_key)
     
-    # 2. Generate UUID and timestamp as before
+    # 2. Generate UUID and timestamp
     new_user_id = str(uuid.uuid4())
     current_time = datetime.now().isoformat() 
     
     try:
-        # 3. Use the admin_client to insert into 'users'
+        # 3. Use admin_client to insert into 'users'
         admin_client.table("users").insert({
             "id": new_user_id,
             "email": email,
             "created_at": current_time 
         }).execute()
 
-        # 4. Use the admin_client to insert into 'profiles'
+        # 4. Use admin_client to insert into 'profiles'
+        # CRITICAL FIX: Removed the non-existent "username" column
         admin_client.table("profiles").insert({
             "id": new_user_id,
-            "username": email.split("@")[0],
             "created_at": current_time
         }).execute()
         
-        # If both inserts succeed, the function returns the ID (not necessary to check res_user)
+        # If both inserts succeed, the function returns the ID
         return new_user_id
             
     except Exception as e:
-        st.error(f"DB Error: {e}") 
+        # st.error(f"DB Error: {e}") # Keep this line commented unless you need to debug further
         return None
-
 def get_user_by_email_db(email: str):
     supabase_client = st.session_state.get("_supabase_client_obj")
     if not supabase_client:
