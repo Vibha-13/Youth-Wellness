@@ -555,18 +555,29 @@ def register_user_db(email: str):
         # Assuming you have already uncommented this line to see the detailed error
         st.error(f"DB Insert Error: {e}") 
         return None
-        
+
 def get_user_by_email_db(email: str):
-    """Searches the custom 'users' or 'profiles' table for an existing user."""
+    """
+    Searches the database for an existing user's ID using their email.
+    The primary search is against the 'users' table, as suggested by the 'users_email_key' error.
+    """
     supabase_client = st.session_state.get("_supabase_client_obj")
     if not supabase_client:
         return []
     try:
-        # Try finding in the 'profiles' table
+        # 1. Search the 'users' table (Likely the primary table for email constraint)
+        res = supabase_client.table("users").select("id").eq("email", email).execute()
+        if res.data:
+            return res.data
+        
+        # 2. Fallback: Search the 'profiles' table 
+        # (Only needed if the 'profiles' table also contains the email for lookup)
         res = supabase_client.table("profiles").select("id").eq("email", email).execute()
         return res.data or []
 
-    except Exception:
+    except Exception as e:
+        # Display the lookup failure if it is a connectivity or permission issue
+        st.error(f"User Lookup Failed: {e}") 
         return []
 
 
