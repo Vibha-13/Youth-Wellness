@@ -1101,64 +1101,98 @@ def mindful_journaling_page():
             st.rerun() # Rerun to update the Goal Complete status
 
 # --- FUNCTIONAL FEATURE: Mood Tracker ---
+
 def mood_tracker_page():
-    st.title("📈 Daily Mood Tracker")
-    st.subheader("How are you feeling right now?")
-    st.caption("Logging your mood helps you see patterns over time.")
-
-    user_id = st.session_state.get("user_id")
+    # --- Page Title ---
+    st.title("Mood Tracker 📈")
+    st.subheader("Your Emotional Journey, Visualized")
     
-    # Check if a mood has already been logged today
-    mood_goal_completed = st.session_state["daily_goals"]["log_mood"]["count"] >= st.session_state["daily_goals"]["log_mood"]["target"]
-    if mood_goal_completed:
-        st.success("✅ Daily Mood Goal Complete!")
-
-    with st.form("mood_log_form"):
-        # Use columns for a better layout
-        col_mood, col_note = st.columns([1, 2])
-
-        with col_mood:
-            mood_score = st.slider(
-                "Select Your Mood Score (1=Worst, 10=Best)",
-                min_value=1,
-                max_value=10,
-                value=5,
-                step=1,
-                key="mood_slider"
-            )
-            st.markdown(f"**Selected:** Score {mood_score} - {MOOD_EMOJI_MAP.get(mood_score)}")
-            
-        with col_note:
-            mood_note = st.text_area(
-                "Quick Note on Why You Feel This Way (Optional)",
-                height=120,
-                max_chars=250,
-                key="mood_note"
-            )
-
-        submit_mood = st.form_submit_button("Log Mood", use_container_width=True)
-
-    if submit_mood:
-        # 1. Save to Database (and local state)
-        db_success = save_mood_db(user_id, mood_score, mood_note)
+    # --- Data Loading and Setup ---
+    if st.session_state.get("mood_history") is None:
+        st.session_state["mood_history"] = []
+    
+    if not st.session_state["mood_history"]:
+        st.info("No mood logs found yet. Log a mood entry to see your history!")
+        return
         
-        # 2. Update Local History
-        new_log = {
-            "date": datetime.now().isoformat(),
-            "mood": mood_score,
-            "note": mood_note
-        }
-        st.session_state["mood_history"].insert(0, new_log)
-        
-        if db_success:
-            st.success(f"Logged Mood: {MOOD_EMOJI_MAP.get(mood_score)} - Score {mood_score}")
-        else:
-            st.warning("Mood logged locally. Database connection failed.")
-            
-        st.rerun() # Rerun to update the Goal Complete status
+    df_mood = pd.DataFrame(st.session_state["mood_history"])
+    
+    # Ensure 'date' column is in datetime format for operations
+    df_mood['date'] = pd.to_datetime(df_mood['date'])
 
+    # --- Daily Deduplication (The Fixed Section) ---
+    # The original logic caused a KeyError because it didn't use a column name in drop_duplicates.
+    
     st.markdown("---")
+    st.subheader("Your Mood History (Last 30 Days)")
+
+    # 1. Create a temporary column with only the date part (no time)
+    # This allows us to group and deduplicate by the day.
+    df_mood['date_only'] = df_mood['date'].dt.date
+
+    # 2. Sort by date descending and drop duplicates on the 'date_only' column.
+    # 'keep="first"' ensures we keep the latest log of the day.
+    df_mood_daily = (
+        df_mood
+        .sort_values('date', ascending=False)
+        .drop_duplicates(subset=['date_only'], keep='first') 
+    )
+
+    # 3. Clean up the DataFrame by removing the temporary column
+    df_mood_daily = df_mood_daily.drop(columns=['date_only']) 
     
+    # Limit the view to the last 30 unique days
+    df_mood_daily = df_mood_daily.head(30)
+    
+    # Sort again for chart display (oldest to newest)
+    df_mood_daily = df_mood_daily.sort_values('date', ascending=True)
+
+    # --- Chart Generation ---
+    # Map numerical score to the emoji string for better visualization
+    df_mood_daily['mood_label'] = df_mood_daily['mood'].map(MOOD_EMOJI_MAP)
+    
+    # Create the line chart
+    fig = px.line(
+        df_mood_daily, 
+        x='date', 
+        y='mood', 
+        text='mood_label', # Use the emoji label as text on hover
+        title='Daily Emotional Trend',
+        labels={'date': 'Date', 'mood': 'Mood Score (1-10)'},
+        color_discrete_sequence=["#FF6F91"] # Pastel pink color
+    )
+    
+    # Customize layout
+    fig.update_traces(textposition="top center")
+    fig.update_layout(
+        xaxis_title=None,
+        yaxis=dict(
+            tickmode='array',
+            tickvals=list(MOOD_EMOJI_MAP.keys()),
+            ticktext=[f"{v.split(' ')[0]} {k}" for k, v in MOOD_EMOJI_MAP.items()],
+            range=[1, 11] # Set range to match possible scores
+        ),
+        hovermode="x unified",
+        margin=dict(l=20, r=20, t=40, b=20)
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- Latest Mood Entries (Table) ---
+    st.markdown("---")
+    st.subheader("Detailed Mood Log")
+    
+    # Prepare data for detailed display (using all logs, not just daily)
+    df_mood_detail = pd.DataFrame(st.session_state["mood_history"])
+    df_mood_detail['Date & Time'] = pd.to_datetime(df_mood_detail['date']).dt.strftime('%Y-%m-%d %H:%M')
+    df_mood_detail['Mood'] = df_mood_detail['mood'].map(MOOD_EMOJI_MAP)
+    
+    st.dataframe(
+        df_mood_detail[['Date & Time', 'Mood', 'note']].rename(columns={'note': 'Note/Context'}),
+        hide_index=True,
+        use_container_width=True
+    )
+
     # --- Mood History Visualization ---
     if st.session_state["mood_history"]:
         st.subheader("Your Mood History (Last 30 Days)")
