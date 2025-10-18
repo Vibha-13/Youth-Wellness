@@ -313,10 +313,14 @@ def get_supabase_admin_client():
         key = st.secrets.get("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_KEY"))
         
         if not url or not key:
+            # Print to Streamlit logs to signal missing key
+            print("ERROR: SUPABASE_URL or SUPABASE_SERVICE_KEY is missing/empty. Admin client cannot be initialized.")
             return None
         
         return create_client(url, key)
     except Exception as e:
+        # Print actual error for debugging
+        print(f"ERROR initializing Supabase Admin Client: {e}")
         return None
 
 
@@ -492,7 +496,7 @@ def sentiment_compound(text: str) -> float:
 
 # ---------- Supabase helpers (DB functions) ----------
 
-# !!! FIX APPLIED HERE: Only inserts into 'profiles' and uses the 'id' column. !!!
+# !!! FIX APPLIED HERE: Added exception logging for debugging !!!
 def register_user_db(email: str):
     """
     Inserts a new user entry into the 'profiles' table 
@@ -501,6 +505,7 @@ def register_user_db(email: str):
     admin_client = get_supabase_admin_client()
     
     if not admin_client:
+        # This means get_supabase_admin_client failed (missing secret), so we return None.
         return None 
         
     new_user_id = str(uuid.uuid4())
@@ -509,14 +514,16 @@ def register_user_db(email: str):
     try:
         # 1. Insert ONLY into the 'profiles' table 
         admin_client.table("profiles").insert({
-            "id": new_user_id, # FIX: Uses the correct 'id' column from your schema
+            "id": new_user_id, 
             "created_at": current_time,
-            "email": email # Add email here for lookup
+            "email": email 
         }).execute()
         
         return new_user_id
             
     except Exception as e:
+        # Print actual error to Streamlit logs for debugging the insert/permissions
+        print(f"Supabase Admin Insert Error: {e}") 
         return None
 
 def get_user_by_email_db(email: str):
@@ -816,7 +823,7 @@ def unauthenticated_home():
                         user = user_list[0]
 
                 if user or db_connected is False:
-                    # --- AUTHENTICATION SUCCESS ---
+                    # --- AUTHENTICATION SUCCESS (Existing User or Local Mode) ---
                     st.session_state["user_id"] = user.get("id") if user else f"local_user_{email.split('@')[0]}"
                     st.session_state["user_email"] = email
                     st.session_state["logged_in"] = True
@@ -844,7 +851,7 @@ def unauthenticated_home():
                     st.rerun()
 
                 else:
-                    # --- 2. Registration Attempt ---
+                    # --- 2. Registration Attempt (New User) ---
                     if db_connected:
                         uid = register_user_db(email) # Calls the fixed registration function
                         
@@ -858,7 +865,8 @@ def unauthenticated_home():
                             st.session_state["page"] = "Home"
                             st.rerun()
                         else:
-                            st.error("Failed to register user in DB. Check secrets or Service Key permissions.")
+                            # CRITICAL: This is where the error is displayed if register_user_db returns None
+                            st.error("Failed to register user in DB. Check secrets or Service Key permissions. See logs for details.")
                     else:
                         st.error("User not found and DB is not connected. Cannot register.")
             else:
