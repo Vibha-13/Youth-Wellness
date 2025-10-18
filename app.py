@@ -308,16 +308,30 @@ def setup_supabase_client(url: str, key: str):
 # --- CRITICAL: ADMIN CLIENT FOR REGISTRATION ---
 @st.cache_resource(show_spinner=False)
 def get_supabase_admin_client():
+    """
+    Initializes a Supabase client using the Service Role Key (Admin Key).
+    This client is used for secure user registration, bypassing RLS.
+    """
     try:
+        # Load URL and SERVICE_KEY securely
         url = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL"))
-        key = st.secrets.get("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_KEY"))
+        # Use a distinct key for the Service Role Key (Admin Key)
+        key = st.secrets.get("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_KEY")) 
         
         if not url or not key:
             # Print to Streamlit logs to signal missing key
             print("ERROR: SUPABASE_URL or SUPABASE_SERVICE_KEY is missing/empty. Admin client cannot be initialized.")
             return None
         
-        return create_client(url, key)
+        # Ensure the keys are stripped of any surrounding quotes or whitespace
+        url_clean = url.strip().strip('"') if isinstance(url, str) else None
+        key_clean = key.strip().strip('"') if isinstance(key, str) else None
+        
+        if not url_clean or not key_clean:
+            print("ERROR: SUPABASE credentials failed cleaning check.")
+            return None
+            
+        return create_client(url_clean, key_clean)
     except Exception as e:
         # Print actual error for debugging
         print(f"ERROR initializing Supabase Admin Client: {e}")
