@@ -184,17 +184,17 @@ footer {{
     visibility: hidden;
 }}
 
-/* Breathing Effect CSS (NEW VISUALS) */
-@keyframes pulse-in {
-    0% { transform: scale(0.6); opacity: 0.8; }
-    100% { transform: scale(1.0); opacity: 1.0; }
-}
-@keyframes pulse-out {
-    0% { transform: scale(1.0); opacity: 1.0; }
-    100% { transform: scale(0.6); opacity: 0.8; }
-}
+/* Breathing Effect CSS (NEW VISUALS) - ALL BRACES ARE DOUBLED */
+@keyframes pulse-in {{
+    0% {{ transform: scale(0.6); opacity: 0.8; }} 
+    100% {{ transform: scale(1.0); opacity: 1.0; }}
+}}
+@keyframes pulse-out {{
+    0% {{ transform: scale(1.0); opacity: 1.0; }}
+    100% {{ transform: scale(0.6); opacity: 0.8; }}
+}}
 
-.breathing-circle {
+.breathing-circle {{
     width: 300px;
     height: 300px;
     background-color: #FF9CC2; /* Your primary theme color */
@@ -209,22 +209,22 @@ footer {{
     font-weight: bold;
     box-shadow: 0 0 50px rgba(255, 156, 194, 0.7);
     transition: background-color 0.5s;
-}
+}}
 
 /* Specific state animations */
-.inhale {
+.inhale {{
     animation: pulse-in 4s ease-in-out forwards; /* 4 seconds inhale */
     background-color: #FF9CC2; 
-}
-.hold {
+}}
+.hold {{
     transform: scale(1.0); /* Keeps scale steady */
     animation-duration: 7s; /* 7 seconds hold (no animation, just steady state) */
     background-color: #FF6F91;
-}
-.exhale {
+}}
+.exhale {{
     animation: pulse-out 8s ease-in-out forwards; /* 8 seconds exhale */
     background-color: #6A8DFF;
-}
+}}
 
 </style>
 """, unsafe_allow_html=True)
