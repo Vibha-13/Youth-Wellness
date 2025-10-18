@@ -244,7 +244,7 @@ def generate_simulated_physiological_data(current_time_ms):
     # Normalize score by max possible (27)
     gsr_base = 1.0 + (base_hr / 100.0) + 0.5 * (phq9_score / 27.0)
     gsr_noise = 0.5 * random.gauss(0, 1) # Add some noise to GSR
-    gsr_value = gsr_base + gsr_noise
+    gsr_value = gr_base + gsr_noise
     
     # Add high-frequency noise for the raw PPG measurement
     ppg_noise = 3 * random.gauss(0, 1)
@@ -760,9 +760,10 @@ def app_splash_screen():
         </style>
         """, unsafe_allow_html=True)
 
-    # Use a small delay to create the transition effect
+    # Use a slightly longer delay (2.0s) to create a more noticeable transition effect
     if st.session_state["show_splash"]:
-        time.sleep(1.5) 
+        # Increased delay for better visibility
+        time.sleep(2.0) 
         st.session_state["show_splash"] = False
         # Crucial: Rerun to proceed to the next stage (unauthenticated_home)
         st.rerun() 
