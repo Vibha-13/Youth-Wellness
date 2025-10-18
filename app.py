@@ -194,6 +194,8 @@ setup_page_and_layout()
 @st.cache_data
 def initialize_kalman(Q_val=0.01, R_val=0.1):
     """Initializes the Kalman filter state variables."""
+    # Q: Process Noise Covariance (how much the state changes naturally)
+    # R: Measurement Noise Covariance (how much the sensor is noisy)
     return {
         'x_est': 75.0,  
         'P_est': 1.0,   
@@ -214,7 +216,7 @@ def kalman_filter_simple(z_meas, state):
     x_pred = state['x_est'] 
     P_pred = state['P_est'] + state['Q']
 
-    # 2. Update
+    # 2. Update (Calculate Kalman Gain K)
     K = P_pred / (P_pred + state['R'])
     x_est = x_pred + K * (z_meas - x_pred)
     P_est = (1 - K) * P_pred
@@ -231,24 +233,22 @@ def generate_simulated_physiological_data(current_time_ms):
     time_sec = current_time_ms / 1000.0 
     
     # Base HR (BPM) that gently changes over time (70-100 BPM)
+    # Uses a slow sine wave to simulate baseline changes
     base_hr = 85 + 10 * np.sin(time_sec / 30.0) 
-    
-    # Add high-frequency noise (Simulates a noisy sensor/motion)
-    ppg_noise = 3 * random.gauss(0, 1)
     
     # Simulate Filtered HR (The 'clean' signal we *want* to see)
     clean_hr = base_hr + 2 * np.sin(time_sec / 0.5) 
     
-    # Raw PPG Measurement (Noisy sine wave that simulates a pulse)
-    raw_ppg_signal = clean_hr + ppg_noise
-    
     # GSR/Stress Simulation (correlated with base HR and overall phq9 score)
-    base_gsr = 0.5 * base_hr / 100.0
     phq9_score = st.session_state.get("phq9_score") or 0
     # Normalize score by max possible (27)
-    gsr_base = 1.0 + base_gsr + 0.5 * np.random.rand() * (phq9_score / 27.0)
+    gsr_base = 1.0 + (base_hr / 100.0) + 0.5 * (phq9_score / 27.0)
     gsr_noise = 0.5 * random.gauss(0, 1) # Add some noise to GSR
     gsr_value = gsr_base + gsr_noise
+    
+    # Add high-frequency noise for the raw PPG measurement
+    ppg_noise = 3 * random.gauss(0, 1)
+    raw_ppg_signal = clean_hr + ppg_noise
     
     return {
         "raw_ppg_signal": raw_ppg_signal, 
@@ -306,22 +306,17 @@ def setup_supabase_client(url: str, key: str):
         
         
 # --- CRITICAL: ADMIN CLIENT FOR REGISTRATION ---
-# This client uses the Service Role Key to bypass RLS for user creation
 @st.cache_resource(show_spinner=False)
 def get_supabase_admin_client():
     try:
-        # Load the dedicated Service Role Key from secrets
         url = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL"))
         key = st.secrets.get("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_KEY"))
         
         if not url or not key:
-            # If the Service Key is missing, registration will default to local or fail gracefully
             return None
         
-        # Create client with service_role privileges (BYPASSES RLS)
         return create_client(url, key)
     except Exception as e:
-        # st.error(f"Failed to initialize Admin Client: {e}") # Debug line
         return None
 
 
@@ -336,8 +331,9 @@ if "show_splash" not in st.session_state:
 # IoT/ECE State
 if "kalman_state" not in st.session_state:
     st.session_state["kalman_state"] = initialize_kalman()
+# --- ADDED kalman_hr to physiological_data DataFrame ---
 if "physiological_data" not in st.session_state:
-    st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level"])
+    st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level", "kalman_hr"])
 if "latest_ece_data" not in st.session_state:
     st.session_state["latest_ece_data"] = {"filtered_hr": 75.0, "gsr_stress_level": 1.0}
 if "ece_history" not in st.session_state:
@@ -511,8 +507,6 @@ def register_user_db(email: str):
     current_time = datetime.now().isoformat() 
     
     try:
-        # NOTE: Removed the insert into the custom 'users' table to fix registration errors.
-
         # 1. Insert ONLY into the 'profiles' table 
         admin_client.table("profiles").insert({
             "id": new_user_id, # FIX: Uses the correct 'id' column from your schema
@@ -523,7 +517,6 @@ def register_user_db(email: str):
         return new_user_id
             
     except Exception as e:
-        # st.error(f"Registration failed on profiles insert: {e}") # Debugging hook
         return None
 
 def get_user_by_email_db(email: str):
@@ -692,6 +685,7 @@ def calculate_plant_health():
         if not df_mood.empty:
             df_mood['mood'] = pd.to_numeric(df_mood['mood'], errors='coerce')
             avg_mood = df_mood['mood'].mean()
+            # Normalize mood (6 is neutral, so anything above 6 helps)
             mood_contribution = (avg_mood - 6.0) * 4 
             health_base += mood_contribution
 
@@ -760,7 +754,6 @@ def app_splash_screen():
         """, unsafe_allow_html=True)
 
     # Use a small delay to create the transition effect
-    # This delay MUST be outside the IF block, but here we enforce the rerunning condition
     if st.session_state["show_splash"]:
         time.sleep(1.5) 
         st.session_state["show_splash"] = False
@@ -806,7 +799,8 @@ def unauthenticated_home():
                         elif key in ["daily_journal", "mood_history", "ece_history", "cbt_history"]:
                             st.session_state[key] = []
                         elif key in ["physiological_data"]:
-                            st.session_state[key] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level"])
+                             # Ensure the DataFrame resets to the correct columns
+                            st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level", "kalman_hr"])
                         elif key in ["plant_health"]:
                             st.session_state[key] = 70.0
                         elif key in ["last_reframing_card"]:
@@ -1368,30 +1362,247 @@ def ai_chat_page():
         st.session_state["chat_messages"].append({"role": "assistant", "content": ai_response})
 
 
+# --- NEW FUNCTIONAL FEATURE: Wellness Ecosystem (Plant Gamification) ---
+def wellness_ecosystem_page():
+    st.title("🌱 Wellness Ecosystem")
+    st.subheader("Your Digital Plant: A Reflection of Your Health")
+    st.caption("Keep your plant flourishing by meeting your daily wellness goals.")
+
+    calculate_plant_health() # Recalculate based on latest goals
+    health = st.session_state["plant_health"]
+
+    # --- Plant Visualization ---
+    col_plant, col_info = st.columns([1, 2])
+    
+    with col_plant:
+        if health >= 85:
+            plant_emoji = "🌳"
+            status_text = "Flourishing! You're thriving."
+            color = "#28A745"
+        elif health >= 60:
+            plant_emoji = "🌿"
+            status_text = "Healthy and steady. Keep up the great work."
+            color = "#FFC107"
+        elif health >= 30:
+            plant_emoji = "🪴"
+            status_text = "Needs attention. A few goals can help."
+            color = "#FD7E14"
+        else:
+            plant_emoji = "🥀"
+            status_text = "Wilting. Take immediate action to care for yourself."
+            color = "#DC3545"
+
+        st.markdown(f"""
+        <div style="text-align: center; margin-top: 20px; padding: 20px; border-radius: 12px; background: rgba(255, 255, 255, 0.7);">
+            <p style="font-size: 8rem; line-height: 1;">{plant_emoji}</p>
+            <h4 style="color: {color}; margin-top: 0;">{status_text}</h4>
+            <p>Health: {health:.1f}%</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col_info:
+        st.metric("Current Health Score", f"{health:.1f}%", delta=None, delta_color="off")
+        st.progress(health / 100)
+
+        st.markdown("---")
+        st.markdown("#### Care Actions")
+        
+        # Interaction Button (Gives a minor, temporary boost)
+        if st.button("Give it Sunlight ☀️ (Minor Boost)", use_container_width=True):
+            st.session_state["plant_health"] = min(100, health + 3.0)
+            st.toast("A little boost of light! Health +3%", icon="☀️")
+            st.rerun()
+
+        # Goal Summary
+        st.markdown("#### What Affects Health?")
+        st.markdown("""
+        * **Daily Goals:** Completing tasks like Mood Logging, Journaling, and Breathing provides the biggest boost.
+        * **Mood Score:** Higher average daily mood increases health.
+        * **Interaction:** Occasional 'Sunlight' helps, but **consistent habits are key**!
+        """)
+
+# --- NEW FUNCTIONAL FEATURE: IoT Dashboard (ECE) ---
+def iot_dashboard_page():
+    st.title("⚙️ IoT Dashboard (ECE)")
+    st.subheader("Real-Time Biofeedback Data")
+    st.caption("Simulated data showing your Heart Rate (PPG) and Stress Level (GSR).")
+    
+    # 1. Start/Stop Control
+    col_button, col_status = st.columns([1, 2])
+    
+    with col_button:
+        if not st.session_state["ece_running"]:
+            if st.button("▶️ Start Biofeedback Stream", key="start_ece", use_container_width=True):
+                st.session_state["ece_running"] = True
+                st.session_state["kalman_state"] = initialize_kalman() # Reset filter
+                # Reset DataFrame with the correct columns
+                st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level", "kalman_hr"])
+                st.rerun()
+        else:
+            if st.button("⏸️ Stop Biofeedback Stream", key="stop_ece", use_container_width=True):
+                st.session_state["ece_running"] = False
+                st.toast("Biofeedback stream stopped.", icon="⏸️")
+                st.rerun()
+
+    with col_status:
+        status_text = "Running..." if st.session_state["ece_running"] else "Stream Stopped."
+        st.info(f"Status: **{status_text}**")
+
+    st.markdown("---")
+
+    # 2. Real-time Metrics and Plot Placeholder
+    metric_cols = st.columns(3)
+    
+    hr_ph = metric_cols[0].empty()
+    gsr_ph = metric_cols[1].empty()
+    time_ph = metric_cols[2].empty()
+    
+    chart_ph = st.empty()
+    
+    # 3. Simulation Loop
+    if st.session_state["ece_running"]:
+        
+        # NOTE: This loop runs only once per rerun, but the final st.rerun() makes it continuous
+        current_time = int(time.time() * 1000)
+        sim_data = generate_simulated_physiological_data(current_time)
+        
+        # --- Kalman Filter Application ---
+        # Add noise to the clean signal to simulate a noisy sensor input for the filter
+        raw_hr_measurement = sim_data["filtered_hr"] + random.gauss(0, 5) 
+        
+        kalman_hr, new_kalman_state = kalman_filter_simple(
+            raw_hr_measurement, 
+            st.session_state["kalman_state"]
+        )
+        st.session_state["kalman_state"] = new_kalman_state # Update global state
+        
+        # --- Update Data Structures ---
+        new_row = {
+            "time_ms": current_time,
+            "raw_ppg_signal": sim_data["raw_ppg_signal"],
+            "filtered_hr": sim_data["filtered_hr"], # The clean base signal
+            "kalman_hr": kalman_hr, # The smoothed signal
+            "gsr_stress_level": sim_data["gsr_stress_level"]
+        }
+        
+        df_phys = pd.concat([st.session_state["physiological_data"], pd.Series(new_row).to_frame().T], ignore_index=True)
+        
+        # Keep only the last 60 seconds of data (120 points at 500ms intervals)
+        max_rows = 120 
+        if len(df_phys) > max_rows:
+            df_phys = df_phys.iloc[-max_rows:]
+            
+        st.session_state["physiological_data"] = df_phys.copy() # Use .copy() for safety
+        st.session_state["latest_ece_data"] = {"filtered_hr": kalman_hr, "gsr_stress_level": sim_data["gsr_stress_level"]}
+        
+        # --- Update Metrics ---
+        with hr_ph:
+            st.metric("Heart Rate (BPM)", f"{kalman_hr:.1f}", delta=None)
+        with gsr_ph:
+            stress_level = sim_data["gsr_stress_level"]
+            stress_emoji = "😌" if stress_level < 2.5 else ("🤨" if stress_level < 5.0 else "🥵")
+            st.metric("GSR Stress Level", f"{stress_level:.2f} {stress_emoji}", delta=None)
+        with time_ph:
+            st.caption(f"Last updated: {datetime.fromtimestamp(current_time/1000).strftime('%H:%M:%S')}")
+
+        # --- Update Plot ---
+        with chart_ph.container():
+            st.markdown("#### Heart Rate & Stress Trend")
+            
+            # Plot HR and Kalman HR (Smoothed)
+            # Use time elapsed for a cleaner x-axis
+            df_plot = df_phys.copy()
+            df_plot['time_seconds'] = (df_plot['time_ms'] - df_plot['time_ms'].min()) / 1000
+            
+            fig_hr = px.line(
+                df_plot, 
+                x='time_seconds', 
+                y=['filtered_hr', 'kalman_hr'], 
+                title='Heart Rate (PPG) Trend',
+                labels={'value': 'BPM', 'time_seconds': 'Time Elapsed (s)'},
+                color_discrete_map={'filtered_hr': '#FF9CC2', 'kalman_hr': '#4CAF50'}
+            )
+            fig_hr.update_layout(yaxis_range=[50, 110], legend_title_text='Signal', transition_duration=50)
+            fig_hr.update_traces(name='Kalman HR (Smoothed)', selector=dict(name='kalman_hr'))
+            fig_hr.update_traces(name='Base HR (True Signal)', selector=dict(name='filtered_hr'))
+            st.plotly_chart(fig_hr, use_container_width=True)
+            
+            # Plot GSR Stress Level
+            fig_gsr = px.line(
+                df_plot, 
+                x='time_seconds', 
+                y='gsr_stress_level', 
+                title='GSR Stress Level',
+                labels={'gsr_stress_level': 'GSR Value', 'time_seconds': 'Time Elapsed (s)'},
+                color_discrete_sequence=['#007BFF']
+            )
+            fig_gsr.update_layout(yaxis_range=[0, 7], transition_duration=50)
+            st.plotly_chart(fig_gsr, use_container_width=True)
+
+        # Pause and rerun to create the continuous stream effect
+        time.sleep(0.5) 
+        st.rerun() 
+            
+    else:
+        # Display static data when stopped
+        if st.session_state["physiological_data"].empty:
+            st.info("Start the stream to see real-time data.")
+        else:
+            df_phys = st.session_state["physiological_data"]
+            latest = st.session_state["latest_ece_data"]
+            
+            # Display last recorded metrics
+            with hr_ph:
+                st.metric("Heart Rate (BPM)", f"{latest['filtered_hr']:.1f}", delta=None)
+            with gsr_ph:
+                stress_level = latest["gsr_stress_level"]
+                stress_emoji = "😌" if stress_level < 2.5 else ("🤨" if stress_level < 5.0 else "🥵")
+                st.metric("GSR Stress Level", f"{stress_level:.2f} {stress_emoji}", delta=None)
+            with time_ph:
+                st.caption(f"Last recorded: {datetime.fromtimestamp(df_phys['time_ms'].max()/1000).strftime('%H:%M:%S')}")
+                
+            # Display history plots
+            with chart_ph.container():
+                st.markdown("#### Heart Rate & Stress Trend (Last Recorded Session)")
+                
+                df_plot = df_phys.copy()
+                df_plot['time_seconds'] = (df_plot['time_ms'] - df_plot['time_ms'].min()) / 1000
+                
+                fig_hr = px.line(
+                    df_plot, 
+                    x='time_seconds', 
+                    y=['filtered_hr', 'kalman_hr'], 
+                    title='Heart Rate (PPG) Trend',
+                    labels={'value': 'BPM', 'time_seconds': 'Time Elapsed (s)'},
+                    color_discrete_map={'filtered_hr': '#FF9CC2', 'kalman_hr': '#4CAF50'}
+                )
+                fig_hr.update_layout(yaxis_range=[50, 110], legend_title_text='Signal')
+                fig_hr.update_traces(name='Kalman HR (Smoothed)', selector=dict(name='kalman_hr'))
+                fig_hr.update_traces(name='Base HR (True Signal)', selector=dict(name='filtered_hr'))
+                st.plotly_chart(fig_hr, use_container_width=True)
+                
+                fig_gsr = px.line(
+                    df_plot, 
+                    x='time_seconds', 
+                    y='gsr_stress_level', 
+                    title='GSR Stress Level',
+                    labels={'gsr_stress_level': 'GSR Value', 'time_seconds': 'Time Elapsed (s)'},
+                    color_discrete_sequence=['#007BFF']
+                )
+                fig_gsr.update_layout(yaxis_range=[0, 7])
+                st.plotly_chart(fig_gsr, use_container_width=True)
+                
 # Placeholder functions for remaining features
 def wellness_checkin_page():
     st.title("🩺 Wellness Check-in")
-    st.write("### PHQ-9 Check-in Logic Goes Here.")
     st.info("This is where the user answers the PHQ-9 questions and the score is interpreted.")
-
-def wellness_ecosystem_page():
-    st.title("🌱 Wellness Ecosystem")
-    st.write("### Plant Gamification/Interaction Logic Goes Here.")
-    st.info("Show the user's plant based on `st.session_state['plant_health']` and allow them to interact.")
 
 def journal_analysis_page():
     st.title("📊 Journal Analysis")
-    st.write("### Data Visualization Logic Goes Here.")
     st.info("Plot mood scores vs. journal sentiment scores to show correlation.")
-
-def iot_dashboard_page():
-    st.title("⚙️ IoT Dashboard (ECE)")
-    st.write("### Real-time ECE Data Plotting Goes Here.")
-    st.info("Simulate or display ECE data, showing Kalman filtered HR and GSR stress levels.")
 
 def report_summary_page():
     st.title("📄 Report & Summary")
-    st.write("### Summary Report Generation Logic Goes Here.")
     st.info("A comprehensive PDF/Downloadable report of the user's weekly/monthly data.")
 
 
