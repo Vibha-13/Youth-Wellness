@@ -3,6 +3,7 @@ import os
 import time
 import random
 import re
+import uuid
 from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
@@ -538,11 +539,32 @@ def register_user_db(email: str):
     supabase_client = st.session_state.get("_supabase_client_obj")
     if not supabase_client:
         return None
+        
+    # 1. Generate a valid UUID for the new user ID
+    # This replaces the need for Supabase auth to generate it
+    new_user_id = str(uuid.uuid4())
+    
     try:
-        res = supabase_client.table("users").insert({"email": email}).execute()
-        if getattr(res, "data", None):
-            return res.data[0].get("id")
-    except Exception:
+        # 2. Insert into 'users' table (using the new permissive RLS policy)
+        res_user = supabase_client.table("users").insert({
+            "id": new_user_id, # <-- CRITICAL: Now passing the UUID
+            "email": email
+        }).execute()
+
+        # 3. Also insert a required row into 'profiles' table (which was missing before!)
+        # This prevents potential RLS failure later on SELECT and is good practice.
+        supabase_client.table("profiles").insert({
+            "id": new_user_id, # Use the same ID to link tables
+            "username": email.split("@")[0] # Set a default username from email
+        }).execute()
+        
+        # Check if the user insert was successful
+        if getattr(res_user, "data", None):
+            # Return the new ID to complete the login
+            return new_user_id
+            
+    except Exception as e:
+        # st.error(f"DB Error: {e}") # You can uncomment this temporarily for debugging
         return None
 
 def get_user_by_email_db(email: str):
