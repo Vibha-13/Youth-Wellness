@@ -183,6 +183,47 @@ textarea:focus, input[type="text"]:focus, input[type="email"]:focus {{
 footer {{
     visibility: hidden;
 }}
+/* Breathing Effect CSS */
+@keyframes pulse-in {
+    0% { transform: scale(0.6); opacity: 0.8; }
+    100% { transform: scale(1.0); opacity: 1.0; }
+}
+@keyframes pulse-out {
+    0% { transform: scale(1.0); opacity: 1.0; }
+    100% { transform: scale(0.6); opacity: 0.8; }
+}
+
+.breathing-circle {
+    width: 300px;
+    height: 300px;
+    background-color: #FF9CC2; /* Your primary theme color */
+    border-radius: 50%;
+    margin: 50px auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.5rem;
+    font-weight: bold;
+    box-shadow: 0 0 50px rgba(255, 156, 194, 0.7);
+    transition: background-color 0.5s;
+}
+
+/* Specific state animations */
+.inhale {
+    animation: pulse-in 4s ease-in-out forwards; /* 4 seconds inhale */
+    background-color: #FF9CC2; 
+}
+.hold {
+    transform: scale(1.0); /* Keeps scale steady */
+    animation-duration: 7s; /* 7 seconds hold (no animation, just steady state) */
+    background-color: #FF6F91;
+}
+.exhale {
+    animation: pulse-out 8s ease-in-out forwards; /* 8 seconds exhale */
+    background-color: #6A8DFF;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1550,23 +1591,22 @@ def cbt_thought_record_page():
         st.info("Complete a Cognitive Thought Record to see your history.")
 
 # -------------------- Mindful Breathing Page --------------------
+# -------------------- Mindful Breathing Page (UPDATED WITH VISUALS) --------------------
 def mindful_breathing_page():
-    # Logic preserved
     st.title("🌬️ Mindful Breathing")
-    st.subheader("Take a break. A 4-7-8 breathing exercise helps calm the nervous system.")
+    st.subheader("Follow the circle: Grow to Inhale, Pause to Hold, Shrink to Exhale.")
     st.markdown("---")
     
-    # Breathing parameters
     inhale_time = 4
     hold_time = 7
     exhale_time = 8
     
-    # State tracking
     breathing_state = st.session_state.get("breathing_state", "stop")
     
     def start_breathing():
         st.session_state["breathing_state"] = "running"
-        st.session_state["daily_goals"]["breathing_session"]["count"] += 1
+        # Only increment the goal counter when starting the session
+        st.session_state["daily_goals"]["breathing_session"]["count"] = st.session_state["daily_goals"]["breathing_session"].get("count", 0) + 1
         st.rerun()
 
     def stop_breathing():
@@ -1575,68 +1615,77 @@ def mindful_breathing_page():
 
     if breathing_state == "stop":
         st.info("Click 'Start Session' to begin the 4-7-8 guided breathing exercise.")
+        # Placeholder for the static circle display
+        st.markdown(f"""
+        <div class="breathing-circle" style="transform: scale(0.6); background-color: #FF9CC2;">
+            CLICK START
+        </div>
+        """, unsafe_allow_html=True)
         if st.button("Start Session", use_container_width=True):
             start_breathing()
 
     if breathing_state == "running":
-        st.markdown("## Focus on the rhythm below.")
         
-        # Use a placeholder to continuously update the text
+        # Placeholder for the dynamic circle
+        circle_placeholder = st.empty()
         status_placeholder = st.empty()
         
+        if st.button("Stop Session", on_click=stop_breathing, use_container_width=True):
+             # The on_click handler will trigger the stop_breathing function and rerender
+             return # Exit the function early
+
         # --- The Breathing Loop ---
-        try:
-            # Set a fixed number of cycles for the session
-            for cycle in range(1, 3): # Run 2 full cycles
-                # 1. Inhale (4s)
-                status_placeholder.markdown(f"""
-                <div style="text-align: center; padding: 30px; border-radius: 15px; background-color: #e0f7fa;">
-                    <h1 style="color: #6A8DFF; font-size: 3rem; margin: 0;">INHALE</h1>
-                    <p style="font-size: 1.5rem; margin: 0;">(Cycle {cycle}/2) - Breathe in deep.</p>
-                </div>
-                """, unsafe_allow_html=True)
-                time.sleep(inhale_time)
-                
-                # 2. Hold (7s)
-                status_placeholder.markdown(f"""
-                <div style="text-align: center; padding: 30px; border-radius: 15px; background-color: #fff0f5;">
-                    <h1 style="color: #FF9CC2; font-size: 3rem; margin: 0;">HOLD</h1>
-                    <p style="font-size: 1.5rem; margin: 0;">(Cycle {cycle}/2) - Hold your breath.</p>
-                </div>
-                """, unsafe_allow_html=True)
-                time.sleep(hold_time)
-
-                # 3. Exhale (8s)
-                status_placeholder.markdown(f"""
-                <div style="text-align: center; padding: 30px; border-radius: 15px; background-color: #fcefee;">
-                    <h1 style="color: #28A745; font-size: 3rem; margin: 0;">EXHALE</h1>
-                    <p style="font-size: 1.5rem; margin: 0;">(Cycle {cycle}/2) - Slowly release all air.</p>
-                </div>
-                """, unsafe_allow_html=True)
-                time.sleep(exhale_time)
-
-            # End of session
-            status_placeholder.empty()
-            st.success("Breathing Session Complete! Goal marked as done. Take a moment to check in with how you feel.")
-            stop_breathing() # Reset state (will trigger rerun to update UI)
+        for cycle in range(1, 4): # Run 3 full cycles for a good session
             
-        except st.runtime.scriptrunner.StopException:
-            # This is expected behavior when st.rerun() is called inside the loop
-            pass
-        except Exception:
-            # Catch other exceptions
-            status_placeholder.empty()
-            st.error("An error occurred during the breathing session.")
-            stop_breathing()
+            # 1. Inhale (4s) - Circle grows
+            with circle_placeholder:
+                st.markdown(f"""
+                <div class="breathing-circle inhale">
+                    <p style="font-size: 2.5rem; margin: 0;">INHALE</p>
+                    <p style="font-size: 1rem; margin: 0;">4 SECONDS</p>
+                </div>
+                """, unsafe_allow_html=True)
+            with status_placeholder:
+                st.info(f"Cycle {cycle}/3: Breathe in deep...")
+            time.sleep(inhale_time)
+            
+            # 2. Hold (7s) - Circle is large and steady
+            with circle_placeholder:
+                st.markdown(f"""
+                <div class="breathing-circle hold">
+                    <p style="font-size: 2.5rem; margin: 0;">HOLD</p>
+                    <p style="font-size: 1rem; margin: 0;">7 SECONDS</p>
+                </div>
+                """, unsafe_allow_html=True)
+            with status_placeholder:
+                st.warning(f"Cycle {cycle}/3: Hold your breath...")
+            time.sleep(hold_time)
 
+            # 3. Exhale (8s) - Circle shrinks
+            with circle_placeholder:
+                st.markdown(f"""
+                <div class="breathing-circle exhale">
+                    <p style="font-size: 2.5rem; margin: 0;">EXHALE</p>
+                    <p style="font-size: 1rem; margin: 0;">8 SECONDS</p>
+                </div>
+                """, unsafe_allow_html=True)
+            with status_placeholder:
+                st.success(f"Cycle {cycle}/3: Slowly release...")
+            time.sleep(exhale_time)
+
+        # End of session
+        circle_placeholder.empty()
+        status_placeholder.empty()
+        st.success("Breathing Session Complete! Goal achieved. Take a moment to check in with how you feel.")
+        stop_breathing() # Reset state
+        
     st.markdown("---")
     st.markdown("### The 4-7-8 Technique")
     st.markdown("""
-    * **Inhale** quietly through your nose for **4 seconds**.
-    * **Hold** your breath for a count of **7 seconds**.
-    * **Exhale** completely through your mouth, making a whoosh sound, for **8 seconds**.
+    * **Inhale** quietly through your nose for **4 seconds** (Circle grows).
+    * **Hold** your breath for a count of **7 seconds** (Circle stays large).
+    * **Exhale** completely through your mouth for **8 seconds** (Circle shrinks).
     """)
-
 
 # -------------------- IoT Dashboard (ECE) Page --------------------
 def iot_dashboard_page():
