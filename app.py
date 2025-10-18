@@ -511,35 +511,51 @@ def sentiment_compound(text: str) -> float:
 # ---------- Supabase helpers (DB functions) ----------
 
 # !!! FIX APPLIED HERE: Added exception logging for debugging !!!
+# app.py (around line 418)
+
 def register_user_db(email: str):
     """
-    Inserts a new user entry into the 'profiles' table 
+    Inserts a new user entry into the 'users' and 'profiles' tables 
     using the dedicated Admin Client to bypass RLS.
     """
+    # Retrieve the ADMIN client (guaranteed to be initialized correctly)
     admin_client = get_supabase_admin_client()
     
+    # Check if the client initialization failed (e.g., key is missing)
     if not admin_client:
-        # This means get_supabase_admin_client failed (missing secret), so we return None.
+        # ------------------ ADD THIS LINE (Around Line 424) ------------------
+        st.error("Admin Client Initialization Error: Please ensure `SUPABASE_SERVICE_KEY` and `SUPABASE_URL` are set correctly in your Streamlit secrets file.")
+        # ---------------------------------------------------------------------
         return None 
         
+    # 1. Generate a valid UUID for the new user ID
     new_user_id = str(uuid.uuid4())
+    
+    # 2. Get current timestamp in ISO format for PostgreSQL
     current_time = datetime.now().isoformat() 
     
     try:
-        # 1. Insert ONLY into the 'profiles' table 
+        # 3. Insert into 'users' table 
+        admin_client.table("users").insert({
+            "id": new_user_id,
+            "email": email,
+            "created_at": current_time 
+        }).execute()
+
+        # 4. Also insert into 'profiles' table 
         admin_client.table("profiles").insert({
-            "id": new_user_id, 
-            "created_at": current_time,
-            "email": email 
+            "id": new_user_id,
+            "created_at": current_time
         }).execute()
         
+        # If both inserts succeed, the function returns the ID
         return new_user_id
             
     except Exception as e:
-        # Print actual error to Streamlit logs for debugging the insert/permissions
-        print(f"Supabase Admin Insert Error: {e}") 
+        # Assuming you have already uncommented this line to see the detailed error
+        st.error(f"DB Insert Error: {e}") 
         return None
-
+        
 def get_user_by_email_db(email: str):
     """Searches the custom 'users' or 'profiles' table for an existing user."""
     supabase_client = st.session_state.get("_supabase_client_obj")
