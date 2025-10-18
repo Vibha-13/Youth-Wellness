@@ -948,6 +948,15 @@ if "app_loaded" not in st.session_state:
 
 # --- 1. Homepage (MODERNIZED CARD STRUCTURE) --- 
 def homepage_panel():
+    
+    # --- CRITICAL SAFETY FIX: Ensure session state lists are not None ---
+    # This prevents the TypeError you encountered if the session state was deleted/set to None during a rerun.
+    if st.session_state.get("daily_journal") is None:
+        st.session_state["daily_journal"] = []
+    if st.session_state.get("mood_history") is None:
+        st.session_state["mood_history"] = []
+    # -------------------------------------------------------------------
+    
     st.markdown(f"<h1>Your Wellness Sanctuary <span style='color: #5D54A4;'>🧠</span></h1>", unsafe_allow_html=True)
     st.caption("A safe space designed with therapeutic colors and gentle interactions to support your mental wellness journey.")
 
@@ -957,9 +966,9 @@ def homepage_panel():
     
     st.markdown("---")
 
-    # --- Fetching Dummy/Real Data for Cards ---
-    total_entries = len(st.session_state.get("daily_journal", []))
-    df_mood = pd.DataFrame(st.session_state.get("mood_history", []))
+    # --- Fetching Dummy/Real Data for Cards (Now Safe from None) ---
+    total_entries = len(st.session_state["daily_journal"]) # No need for .get(..., []) since we checked above
+    df_mood = pd.DataFrame(st.session_state["mood_history"])
     avg_mood_7d = df_mood.head(7)['mood'].mean() if not df_mood.empty else 6.0 
     
     # Calculate a simple streak (for visualization)
@@ -1041,7 +1050,7 @@ def homepage_panel():
             elif st.session_state.get("phq9_score") is None:
                 st.info("📊 **First Step:** Take the quick **Wellness Check-in** on the sidebar. It helps us personalize your journey!")
             else:
-                st.success(f"🌟 **Great Work!** Your average mood is {avg_mood_display} {mood_icon}. Keep your streak going! Check the **Wellness Ecosystem** for your plant's status.")
+                st.success(f"🌟 **Great Work!** Your average mood is {avg_mood_display} {mood_icon}. Check the **Wellness Ecosystem** for your plant's status.")
 
     with col_quote:
         quote = random.choice(QUOTES)
@@ -1077,8 +1086,6 @@ def homepage_panel():
              st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No mood data yet. Log your first mood to see your trends!")
-
-
 # --- 2. Mindful Journaling ---
 def mindful_journaling_page():
     st.markdown(f"<h1>Mindful Journaling <span style='color: #5D54A4;'>📝</span></h1>", unsafe_allow_html=True)
