@@ -79,8 +79,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CRITICAL STYLE INJECTION FIX ---
-# This block defines the modern theme, card styles, and transitions.
+# --- CRITICAL STYLE INJECTION FIX (Enhanced Transitions & Polish) ---
 st.markdown("""
 <style>
 /* 1. Global Background and Typography */
@@ -120,11 +119,12 @@ textarea:focus, input:focus {
     margin-bottom: 20px;
     border: none;
 }
+/* Enhanced Hover Effect */
 .metric-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 25px rgba(0,0,0,0.1);
+    transform: translateY(-8px) scale(1.02); /* More lift and slight zoom */
+    box-shadow: 0 15px 30px rgba(255, 156, 194, 0.4); /* Stronger, colored shadow */
     cursor: pointer;
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.95);
 }
 
 /* 4. Custom Sidebar Colors/Style (Calm Blue-Purple) */
@@ -135,7 +135,7 @@ textarea:focus, input:focus {
 
 /* Sidebar Navigation Links/Buttons */
 [data-testid="stSidebarNav"] li > a {
-    color: #343a40; /* Darker text for better contrast */
+    color: #343a40; 
     font-size: 1.0rem;
     border-radius: 8px;
     margin: 5px 0;
@@ -152,10 +152,11 @@ textarea:focus, input:focus {
 
 /* Sidebar Active Page */
 [data-testid="stSidebarNav"] li > a[aria-current="page"] {
-    background-color: #FF9CC2; /* Primary color background for active page */
+    background-color: #FF9CC2; 
     color: white; 
     font-weight: 700;
-    box-shadow: 0 4px 12px rgba(255, 156, 194, 0.3);
+    box-shadow: 0 4px 15px rgba(255, 156, 194, 0.7); /* Stronger active glow */
+    border-right: 5px solid #FF6F91; /* Highlight strip */
 }
 
 /* 5. Primary Button Style (Pastel Rounded) */
@@ -169,8 +170,11 @@ textarea:focus, input:focus {
     box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     transition: all 0.3s;
 }
+/* Enhanced Button Hover Effect */
 .stButton>button:hover {
     background: #FF6F91;
+    transform: translateY(-2px) scale(1.01); /* Distinct lift */
+    box-shadow: 0 6px 12px rgba(0,0,0,0.2);
 }
 
 /* 6. Splash Screen Styling (for smooth transition) */
@@ -221,14 +225,26 @@ textarea:focus, input:focus {
     color: white;
     font-size: 1.5rem;
     font-weight: 700;
-    animation: scaleIn 4s infinite alternate ease-in-out; /* Default animation */
+    animation: scaleIn 4s infinite alternate ease-in-out; 
 }
-/* Re-define animations to be part of the style block */
 @keyframes scaleIn {
     from { transform: scale(1); }
     to { transform: scale(1.5); }
 }
 
+/* 8. Page Content Fade-In Transition (THE MODERN APP FEEL) */
+.page-content-wrapper {
+    animation: fadeIn 0.5s ease-out 0.1s forwards;
+    opacity: 0; /* Start invisible */
+    transform: translateY(15px); /* Start slightly offset for sliding effect */
+}
+
+@keyframes fadeIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 # --- END CRITICAL STYLE INJECTION FIX ---
@@ -513,13 +529,12 @@ def sidebar_auth():
 
 # --- 1. Homepage (MODERNIZED CARD STRUCTURE) --- 
 def homepage_panel():
+    st.markdown('<div class="page-content-wrapper">', unsafe_allow_html=True) # <<< START WRAPPER
     
     # --- ULTRA SAFE DATA ACCESS FIX (Put this at the very top of the function) ---
-    # Use the OR operator to default to an empty list [] if the value is None
     safe_journal = st.session_state.get("daily_journal") or []
     safe_mood = st.session_state.get("mood_history") or []
 
-    # Now, calculate metrics using the safe variables
     total_entries = len(safe_journal)
     df_mood = pd.DataFrame(safe_mood)
     # ------------------------------------------------------------
@@ -539,14 +554,10 @@ def homepage_panel():
     # Calculate a simple streak
     current_streak = 0
     if st.session_state.get("mood_history"):
-        # Convert all mood history dates to date objects
         dates = pd.to_datetime([item['date'] for item in st.session_state['mood_history']]).date
-        
-        # Get unique dates
         unique_dates = set(dates)
         today = datetime.now().date()
         
-        # Check for streak starting today
         current_date = today
         while current_date in unique_dates:
             current_streak += 1
@@ -644,9 +655,12 @@ def homepage_panel():
              st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No mood data yet. Log your first mood to see your trends!")
+        
+    st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
 
 # --- 2. Mindful Journaling ---
 def mindful_journaling_page():
+    st.markdown('<div class="page-content-wrapper">', unsafe_allow_html=True) # <<< START WRAPPER
     st.title("Mindful Journaling ✍️")
     st.caption("A space for free-form reflection. Simply write what's on your mind.")
 
@@ -676,7 +690,6 @@ def mindful_journaling_page():
                 st.success("Journal entry saved and analyzed!")
                 update_goal("journal_entry")
                 
-                # Fetch new data and rerun to update homepage/sidebar
                 load_all_user_data(st.session_state["user_id"]) 
                 st.rerun() 
             except Exception as e:
@@ -687,16 +700,18 @@ def mindful_journaling_page():
     if not df_journal.empty:
         df_journal['date'] = pd.to_datetime(df_journal['date']).dt.date
         
-        # Display as expandable elements
         for index, row in df_journal.head(5).iterrows():
             with st.expander(f"**{row['date']}** - {row['title'] if row['title'] else 'Untitled Entry'}"):
                 st.markdown(f"**Sentiment Score:** {row['sentiment_score']:.2f}")
                 st.markdown(row['content'])
     else:
         st.info("You haven't saved any journal entries yet.")
+        
+    st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
 
 # --- 3. Mood Tracker ---
 def mood_tracker_page():
+    st.markdown('<div class="page-content-wrapper">', unsafe_allow_html=True) # <<< START WRAPPER
     st.title("Mood Tracker 📊")
     st.caption("Rate your general mood to track your emotional trends.")
     
@@ -731,7 +746,6 @@ def mood_tracker_page():
                 st.success("Mood successfully logged!")
                 update_goal("mood_log")
                 
-                # Fetch new data and rerun to update homepage/sidebar
                 load_all_user_data(st.session_state["user_id"])
                 st.rerun()
             except Exception as e:
@@ -743,7 +757,6 @@ def mood_tracker_page():
     if not df_mood.empty:
         df_mood['date'] = pd.to_datetime(df_mood['date'])
         
-        # Calculate weekly average
         df_mood['Week'] = df_mood['date'].dt.to_period('W').apply(lambda r: r.start_time.strftime('%Y-%m-%d'))
         df_weekly_avg = df_mood.groupby('Week')['mood'].mean().reset_index()
         df_weekly_avg.rename(columns={'mood': 'Weekly Average Mood'}, inplace=True)
@@ -759,9 +772,13 @@ def mood_tracker_page():
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Start logging your mood to see your history chart here.")
+        
+    st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
+
 
 # --- 4. Wellness Check-in (PHQ-9 Simulator) ---
 def wellness_checkin_page():
+    st.markdown('<div class="page-content-wrapper">', unsafe_allow_html=True) # <<< START WRAPPER
     st.title("Wellness Check-in (PHQ-9) 📋")
     st.caption("The Patient Health Questionnaire (PHQ-9) is a quick self-assessment. Be honest with your answers, your well-being matters.")
     
@@ -798,7 +815,6 @@ def wellness_checkin_page():
         if submit_button:
             total_score = sum(scores)
             
-            # Save to DB
             if supabase_client:
                 try:
                     supabase_client.table('wellness_checkin').insert({
@@ -815,7 +831,6 @@ def wellness_checkin_page():
             
             st.subheader(f"Your PHQ-9 Score: {total_score}")
             
-            # Interpretation
             if total_score <= 4:
                 st.success("Minimal Depression. Maintain your current wellness habits.")
             elif 5 <= total_score <= 9:
@@ -828,37 +843,35 @@ def wellness_checkin_page():
                 st.markdown("## 🚨 Severe Depression / Crisis Alert 🚨")
                 st.markdown("Your safety is paramount. **Please contact a professional or a crisis line immediately.**")
                 st.error("Crisis Line Placeholder: [1-800-273-8255 (US Suicide & Crisis Lifeline)]")
+                
+    st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
 
 # --- 5. AI Chat (OpenRouter/OpenAI) ---
 def ai_chat_page():
+    st.markdown('<div class="page-content-wrapper">', unsafe_allow_html=True) # <<< START WRAPPER
     st.title("AI Wellness Buddy 🤖")
     st.caption("Your non-judgmental partner for a quick chat, motivational words, or stress relief ideas.")
     
     openai_client = get_openai_client()
     if not openai_client:
         st.warning("AI Chat is offline. Please set the OPENROUTER_API_KEY environment variable.")
+        st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
         return
 
-    # Display chat messages from history on app rerun
     for message in st.session_state.messages:
         avatar = "🤖" if message["role"] == "assistant" else "👤"
         with st.chat_message(message["role"], avatar=avatar):
             st.markdown(message["content"])
 
-    # Accept user input
     if prompt := st.chat_input("Ask your wellness buddy anything..."):
-        # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
         
-        # Display user message
         with st.chat_message("user", avatar="👤"):
             st.markdown(prompt)
 
-        # Generate assistant response
         with st.chat_message("assistant", avatar="🤖"):
             with st.spinner("AI is thinking..."):
                 try:
-                    # System prompt for context
                     system_prompt = (
                         "You are a compassionate and non-judgmental AI wellness buddy called HarmonySphere. "
                         "Your tone should be gentle, encouraging, and supportive. "
@@ -866,7 +879,6 @@ def ai_chat_page():
                         "You are NOT a substitute for professional mental health care. Always prioritize safety."
                     )
                     
-                    # Combine system prompt with history
                     full_messages = [{"role": "system", "content": system_prompt}] + st.session_state.messages
                     
                     stream = openai_client.chat.completions.create(
@@ -884,24 +896,23 @@ def ai_chat_page():
                     response = f"An unexpected error occurred: {e}"
                     st.error(response)
 
-        # Add assistant response to chat history
         st.session_state.messages.append({"role": "assistant", "content": response})
+        
+    st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
 
 # --- 6. Wellness Ecosystem ---
 def wellness_ecosystem_page():
+    st.markdown('<div class="page-content-wrapper">', unsafe_allow_html=True) # <<< START WRAPPER
     st.title("Wellness Ecosystem 🌱")
     st.caption("Your digital plant reflects your consistency in self-care. Keep it thriving!")
     
     goals = st.session_state.get("daily_goals", DEFAULT_GOALS)
     
-    # Calculate Wellness Score: 1 point for meeting any daily goal
     wellness_score = sum(1 for goal in goals.values() if goal["count"] >= goal["target"])
     
-    # Calculate overall consistency (Example logic: 7-day mood average)
     df_mood = pd.DataFrame(st.session_state.get("mood_history") or [])
     avg_mood_7d = df_mood.head(7)['mood'].mean() if not df_mood.empty else 6.0 
     
-    # Determine Plant Health based on mood trend and daily goals
     if wellness_score >= 2 and avg_mood_7d >= 7.0:
         health_state = "great"
     elif wellness_score >= 1 or avg_mood_7d >= 5.5:
@@ -911,7 +922,6 @@ def wellness_ecosystem_page():
         
     plant = ECO_PLANT_STATES[health_state]
     
-    # --- Visual Plant Display ---
     with st.container(border=True):
         col_plant, col_message = st.columns([1, 2])
         
@@ -930,15 +940,18 @@ def wellness_ecosystem_page():
             st.markdown(f"- **Daily Goals Achieved:** **{wellness_score}/3**")
             st.markdown(f"- **7-Day Mood Average:** **{avg_mood_7d:.1f}/11**")
 
+    st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
+
 # --- 7. Mindful Breathing ---
 def mindful_breathing_page():
+    st.markdown('<div class="page-content-wrapper">', unsafe_allow_html=True) # <<< START WRAPPER
     st.title("Mindful Breathing 🧘")
     st.caption("A simple 4-7-8 breathing technique to calm your nervous system.")
 
     st.warning("Click the button to begin the exercise. This page uses a visual indicator, but follow the counts for best results.")
 
     if st.button("Start 4-7-8 Breathing Cycle", key="start_breathing"):
-        st.empty() # Clear button after click
+        st.empty() 
         st.session_state["breathing_active"] = True
         update_goal("breathing_session")
         
@@ -946,34 +959,31 @@ def mindful_breathing_page():
         
     if st.session_state.get("breathing_active"):
         
-        # Simple animation loop
         placeholder = st.empty()
         
-        for _ in range(3): # Run 3 cycles
-            # INHALE (4 seconds)
+        for _ in range(3): 
             with placeholder.container():
-                st.markdown('<div class="breathing-circle breathe-inhale" style="background-color: #4CAF50;">INHALE 4</div>', unsafe_allow_html=True)
+                st.markdown('<div class="breathing-circle" style="background-color: #4CAF50; animation: scaleIn 4s linear 0s 1;">INHALE 4</div>', unsafe_allow_html=True)
             time.sleep(4)
             
-            # HOLD (7 seconds)
             with placeholder.container():
-                 st.markdown('<div class="breathing-circle" style="background-color: #FFC107; transform: scale(1.5);">HOLD 7</div>', unsafe_allow_html=True)
+                 st.markdown('<div class="breathing-circle" style="background-color: #FFC107; transform: scale(1.5); animation: none;">HOLD 7</div>', unsafe_allow_html=True)
             time.sleep(7)
             
-            # EXHALE (8 seconds)
             with placeholder.container():
-                st.markdown('<div class="breathing-circle" style="background-color: #F44336; animation: scaleOut 8s infinite alternate ease-in-out;">EXHALE 8</div>', unsafe_allow_html=True)
+                st.markdown('<div class="breathing-circle" style="background-color: #F44336; animation: scaleOut 8s linear 0s 1 reverse;">EXHALE 8</div>', unsafe_allow_html=True)
             time.sleep(8)
             
-        # End of session
         st.session_state["breathing_active"] = False
         placeholder.empty()
         st.success("Session complete! You can start another one or return to the main page.")
-        # Reload sidebar to show goal update
         st.rerun()
+        
+    st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
 
 # --- 8. CBT Thought Record ---
 def cbt_thought_record_page():
+    st.markdown('<div class="page-content-wrapper">', unsafe_allow_html=True) # <<< START WRAPPER
     st.title("CBT Thought Record 🧠")
     st.caption("Use this to challenge negative automatic thoughts and practice cognitive restructuring.")
     
@@ -1011,24 +1021,28 @@ def cbt_thought_record_page():
                 st.success("CBT Thought Record saved successfully!")
             except Exception as e:
                 st.error(f"Failed to save CBT record: {e}")
+                
+    st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
 
 # --- 9. Journal Analysis ---
 def journal_analysis_page():
+    st.markdown('<div class="page-content-wrapper">', unsafe_allow_html=True) # <<< START WRAPPER
     st.title("Journal Analysis 🔍")
     st.caption("AI-powered insights into your recent journal entries.")
     
     openai_client = get_openai_client()
     if not openai_client:
         st.warning("Analysis is offline. Please set the OPENROUTER_API_KEY environment variable.")
+        st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
         return
 
     df_journal = pd.DataFrame(st.session_state.get("daily_journal", [])).head(5)
 
     if df_journal.empty:
         st.info("Please write at least one journal entry to enable analysis.")
+        st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
         return
 
-    # Prepare context for AI
     journal_context = "\n---\n".join([
         f"Date: {row['date']}\nTitle: {row['title']}\nContent: {row['content']}\nSentiment: {row['sentiment_score']:.2f}"
         for _, row in df_journal.iterrows()
@@ -1055,26 +1069,25 @@ def journal_analysis_page():
                 st.markdown(response.choices[0].message.content)
             except Exception as e:
                 st.error(f"AI Analysis Failed: {e}")
+                
+    st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
 
 # --- 10. IoT Dashboard (ECE Project Example) ---
 def iot_dashboard_page():
+    st.markdown('<div class="page-content-wrapper">', unsafe_allow_html=True) # <<< START WRAPPER
     st.title("IoT Dashboard (ECE Project Example) ⚙️")
     st.caption("Simulated data from an environment sensor (e.g., for a student dorm/lab).")
     
     st.warning("This is a simulated dashboard to showcase data visualization and filtering.")
 
-    # Generate simulated data
     current_time = datetime.now()
     data_points = 50
     time_series = [current_time - timedelta(minutes=i) for i in range(data_points)]
     
-    # Simulate a noisy temperature signal around 24.5C
     sim_temp = 24.5 + np.random.normal(0, 1.5, data_points)
     
-    # Apply Kalman Filter for smoothing (in reverse time order)
     smoothed_temp = []
     
-    # Reset Kalman state for consistent simulation start
     if 'kalman_state' in st.session_state:
         del st.session_state['kalman_state']
 
@@ -1086,10 +1099,9 @@ def iot_dashboard_page():
         'Time': reversed(time_series),
         'Measured Temperature (°C)': sim_temp,
         'Smoothed Temperature (°C)': smoothed_temp,
-        'Humidity (%)': 50 + np.random.normal(0, 2, data_points) # Simulate humidity
+        'Humidity (%)': 50 + np.random.normal(0, 2, data_points) 
     })
     
-    # --- Visualization ---
     st.subheader("Temperature Trend")
     
     fig = px.line(
@@ -1109,12 +1121,14 @@ def iot_dashboard_page():
     with col2:
         st.metric("Current Humidity", f"{df_iot['Humidity (%)'].iloc[-1]:.2f} %")
     with col3:
-        # Example of a derived metric
         comfort_index = (df_iot['Smoothed Temperature (°C)'].iloc[-1] + df_iot['Humidity (%)'].iloc[-1] / 100) / 2
         st.metric("Comfort Index", f"{comfort_index:.2f}")
 
+    st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
+
 # --- 11. Report & Summary ---
 def report_summary_page():
+    st.markdown('<div class="page-content-wrapper">', unsafe_allow_html=True) # <<< START WRAPPER
     st.title("Report & Summary 📈")
     st.caption("A consolidated view of your wellness metrics.")
 
@@ -1124,7 +1138,6 @@ def report_summary_page():
     st.subheader("Key Wellness Indicators")
     col1, col2, col3 = st.columns(3)
     
-    # Mood Indicator
     avg_mood = df_mood['mood'].mean() if not df_mood.empty else 6.0
     mood_emoji = MOOD_EMOJI_MAP.get(int(round(avg_mood)), "❓")
     with col1:
@@ -1135,7 +1148,6 @@ def report_summary_page():
         </div>
         """, unsafe_allow_html=True)
 
-    # Sentiment Indicator
     avg_sentiment = df_journal['sentiment_score'].mean() if not df_journal.empty else 0.0
     sentiment_color = "#28a745" if avg_sentiment >= 0.2 else "#dc3545" if avg_sentiment <= -0.1 else "#ffc107"
     with col2:
@@ -1146,7 +1158,6 @@ def report_summary_page():
         </div>
         """, unsafe_allow_html=True)
 
-    # PHQ-9 Score
     phq9_score = st.session_state.get("phq9_score")
     phq9_color = "#dc3545" if phq9_score is not None and phq9_score >= 10 else "#28a745" if phq9_score is not None and phq9_score <= 4 else "#ffc107"
     with col3:
@@ -1171,6 +1182,8 @@ def report_summary_page():
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Log a few journal entries to see your sentiment trend.")
+
+    st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
 
 # --- Unauthenticated Home ---
 def unauthenticated_home():
@@ -1217,11 +1230,9 @@ def show_splash_screen():
         </script>
         """, unsafe_allow_html=True)
     
-    # This must run before the main content to initialize state correctly
     st.session_state["app_loaded"] = True
     time.sleep(2.5) # Wait for fade-out to complete visually
-    st.experimental_rerun()
-
+    st.rerun() # Use st.rerun for modern Streamlit
 
 # ---------- MAIN APPLICATION LOGIC ----------
 
@@ -1242,33 +1253,22 @@ else:
     
     current_page = st.session_state["page"]
     
-    # 1. Fully Built Pages (Functional features)
-    if current_page == "Home":
-        homepage_panel()
-    elif current_page == "Mindful Journaling":
-        mindful_journaling_page()
-    elif current_page == "Mood Tracker":
-        mood_tracker_page()
-    elif current_page == "Wellness Check-in":
-        wellness_checkin_page()
-    elif current_page == "AI Chat":
-        ai_chat_page() 
-    elif current_page == "Wellness Ecosystem":
-        wellness_ecosystem_page()
+    # Map page names to function calls
+    page_functions = {
+        "Home": homepage_panel,
+        "Mindful Journaling": mindful_journaling_page,
+        "Mood Tracker": mood_tracker_page,
+        "Wellness Check-in": wellness_checkin_page,
+        "AI Chat": ai_chat_page,
+        "Wellness Ecosystem": wellness_ecosystem_page,
+        "Mindful Breathing": mindful_breathing_page,
+        "CBT Thought Record": cbt_thought_record_page,
+        "Journal Analysis": journal_analysis_page,
+        "IoT Dashboard (ECE)": iot_dashboard_page,
+        "Report & Summary": report_summary_page,
+    }
     
-    # 2. Pages with Simple Functionality
-    elif current_page == "Mindful Breathing":
-        mindful_breathing_page()
-    elif current_page == "CBT Thought Record":
-        cbt_thought_record_page()
-    elif current_page == "Journal Analysis":
-        journal_analysis_page()
-    
-    # 3. Project-Specific Pages
-    elif current_page == "IoT Dashboard (ECE)": 
-        iot_dashboard_page()
-    elif current_page == "Report & Summary": 
-        report_summary_page()
-    
+    if current_page in page_functions:
+        page_functions[current_page]()
     else:
         st.error("Page not found.")
