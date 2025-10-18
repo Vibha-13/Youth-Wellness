@@ -244,7 +244,7 @@ def generate_simulated_physiological_data(current_time_ms):
     # Normalize score by max possible (27)
     gsr_base = 1.0 + (base_hr / 100.0) + 0.5 * (phq9_score / 27.0)
     gsr_noise = 0.5 * random.gauss(0, 1) # Add some noise to GSR
-    gsr_value = gr_base + gsr_noise
+    gsr_value = gsr_base + gsr_noise
     
     # Add high-frequency noise for the raw PPG measurement
     ppg_noise = 3 * random.gauss(0, 1)
@@ -681,9 +681,19 @@ def save_cbt_record(cbt_data: dict):
             
     return True
 
+# --- BEGIN CACHE ERROR FIX ---
 @st.cache_data(show_spinner=False)
-def load_all_user_data(user_id, supabase_client):
-    # Logic preserved
+def load_all_user_data(user_id): # FIX 1: Removed 'supabase_client' argument
+    """
+    Loads all user-specific wellness data from the database.
+    
+    The Supabase client is fetched internally from st.session_state to ensure 
+    only the hashable 'user_id' is passed to this cached function, avoiding the 
+    UnhashableParamError.
+    """
+    # FIX 2: Retrieve the client internally
+    supabase_client = st.session_state.get("_supabase_client_obj")
+
     if not supabase_client:
         return {"journal": [], "mood": [], "phq9": [], "ece": [], "cbt": []}
     
@@ -714,6 +724,7 @@ def load_all_user_data(user_id, supabase_client):
         return {"journal": [], "mood": [], "phq9": [], "ece": [], "cbt": []}
         
     return data
+# --- END CACHE ERROR FIX ---
 
 def calculate_plant_health():
     # Logic preserved
@@ -805,14 +816,13 @@ def app_splash_screen():
         }
         </style>
         """, unsafe_allow_html=True)
-
     # Use a slightly longer delay (2.0s) to create a more noticeable transition effect
     if st.session_state["show_splash"]:
         # Increased delay for better visibility
-        time.sleep(2.0) 
+        time.sleep(2.0)
         st.session_state["show_splash"] = False
         # Crucial: Rerun to proceed to the next stage (unauthenticated_home)
-        st.rerun() 
+        st.rerun()
 
 # !!! FIX APPLIED HERE: Restructured for centered, unauthenticated login !!!
 def unauthenticated_home():
@@ -821,963 +831,1050 @@ def unauthenticated_home():
     st.title("Welcome to HarmonySphere 🧠")
     st.subheader(random.choice(QUOTES))
     st.markdown("</div>", unsafe_allow_html=True)
-    
+
     # Center the login form using columns
     col_a, col_form, col_b = st.columns([1.5, 2, 1.5])
     
     with col_form:
         # Custom HTML styling for the white box and shadow
         st.markdown("""
-            <div style="background-color: white; padding: 30px; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.15);">
-                <h3 style="text-align: center; color: #FF9CC2; margin-top: 0;">Access Your Wellness Dashboard</h3>
-                <p style="text-align: center; font-size: 0.9rem; color: #555;">Use your email to securely log in or register.</p>
-            """, unsafe_allow_html=True)
-
+        <div style="background-color: white; padding: 30px; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.15);">
+            <h3 style="text-align: center; color: #FF9CC2; margin-top: 0;">Access Your Wellness Dashboard</h3>
+            <p style="text-align: center; font-size: 0.9rem; color: #555;">Use your email to securely log in or register.</p>
+        """, unsafe_allow_html=True)
+        
         with st.form("centered_login_form"):
             email = st.text_input("Email", placeholder="teenager@example.com", key="login_email_center").lower().strip()
             submitted = st.form_submit_button("Access Dashboard", use_container_width=True)
-        
+            
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # IMPORTANT: Authentication Logic runs ONLY if submitted
-        if submitted:
-            if email and "@" in email:
-                # Clear existing session data before logging in
-                # This logic is kept for robust multi-user capability
-                for key in ["user_id", "user_email", "phq9_score", "phq9_interpretation", "kalman_state", "daily_journal", "mood_history", "physiological_data", "ece_history", "plant_health", "cbt_history", "last_reframing_card"]:
-                    if key in st.session_state:
-                        if key in ["user_id", "user_email", "phq9_score", "phq9_interpretation"]:
-                            st.session_state[key] = None
-                        elif key in ["kalman_state"]:
-                            st.session_state[key] = initialize_kalman()
-                        elif key in ["daily_journal", "mood_history", "ece_history", "cbt_history"]:
-                            st.session_state[key] = []
-                        elif key in ["physiological_data"]:
-                             # Ensure the DataFrame resets to the correct columns
-                            st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level", "kalman_hr"])
-                        elif key in ["plant_health"]:
-                            st.session_state[key] = 70.0
-                        elif key in ["last_reframing_card"]:
-                            st.session_state[key] = None
-                        
-                user = None
-                db_connected = st.session_state.get("_db_connected")
+    # IMPORTANT: Authentication Logic runs ONLY if submitted
+    if submitted:
+        if email and "@" in email:
+            # Clear existing session data before logging in
+            # This logic is kept for robust multi-user capability
+            for key in ["user_id", "user_email", "phq9_score", "phq9_interpretation", "kalman_state", "daily_journal", "mood_history", "physiological_data", "ece_history", "plant_health", "cbt_history", "last_reframing_card"]:
+                if key in st.session_state:
+                    if key in ["user_id", "user_email", "phq9_score", "phq9_interpretation"]:
+                        st.session_state[key] = None
+                    elif key in ["kalman_state"]:
+                        st.session_state[key] = initialize_kalman()
+                    elif key in ["daily_journal", "mood_history", "ece_history", "cbt_history"]:
+                        st.session_state[key] = []
+                    elif key in ["physiological_data"]:
+                        # Ensure the DataFrame resets to the correct columns
+                        st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level", "kalman_hr"])
+                    elif key in ["plant_health"]:
+                        st.session_state[key] = 70.0
+                    elif key in ["last_reframing_card"]:
+                        st.session_state[key] = None
 
-                # --- 1. Login/Lookup Attempt ---
+            user = None
+            db_connected = st.session_state.get("_db_connected")
+
+            # --- 1. Login/Lookup Attempt ---
+            if db_connected:
+                user_list = get_user_by_email_db(email)
+                if user_list:
+                    user = user_list[0]
+
+            if user or db_connected is False:
+                # --- AUTHENTICATION SUCCESS (Existing User or Local Mode) ---
+                st.session_state["user_id"] = user.get("id") if user else f"local_user_{email.split('@')[0]}"
+                st.session_state["user_email"] = email
+                st.session_state["logged_in"] = True
+
+                # --- DATA LOADING (Transition Start) ---
+                if user and db_connected:
+                    with st.spinner("Loading your personalized wellness data..."):
+                        # FIX 3: Corrected function call - only passing user_id
+                        user_data = load_all_user_data(st.session_state["user_id"]) 
+
+                        st.session_state["daily_journal"] = user_data["journal"]
+                        st.session_state["mood_history"] = user_data["mood"]
+                        st.session_state["ece_history"] = user_data["ece"]
+                        st.session_state["cbt_history"] = user_data["cbt"]
+                        
+                        if user_data["phq9"]:
+                            latest_phq9 = user_data["phq9"][0]
+                            st.session_state["phq9_score"] = latest_phq9.get("score")
+                            st.session_state["phq9_interpretation"] = latest_phq9.get("interpretation")
+                            st.session_state["last_phq9_date"] = pd.to_datetime(latest_phq9.get("created_at")).strftime("%Y-%m-%d")
+
+                # The smooth transition effect you asked for!
+                st.success("Login successful! Redirecting to dashboard...")
+                time.sleep(1.0)
+                st.session_state["page"] = "Home"
+                st.rerun()
+
+            else: 
+                # --- 2. Registration (New User) ---
                 if db_connected:
-                    user_list = get_user_by_email_db(email) 
-                    if user_list:
-                        user = user_list[0]
-
-                if user or db_connected is False:
-                    # --- AUTHENTICATION SUCCESS (Existing User or Local Mode) ---
-                    st.session_state["user_id"] = user.get("id") if user else f"local_user_{email.split('@')[0]}"
-                    st.session_state["user_email"] = email
-                    st.session_state["logged_in"] = True
-
-                    # --- DATA LOADING (Transition Start) ---
-                    if user and db_connected:
-                        with st.spinner("Loading your personalized wellness data..."):
-                            user_data = load_all_user_data(st.session_state["user_id"], st.session_state.get("_supabase_client_obj"))
-                            
-                            st.session_state["daily_journal"] = user_data["journal"]
-                            st.session_state["mood_history"] = user_data["mood"]
-                            st.session_state["ece_history"] = user_data["ece"]
-                            st.session_state["cbt_history"] = user_data["cbt"]
-                            
-                            if user_data["phq9"]:
-                                latest_phq9 = user_data["phq9"][0]
-                                st.session_state["phq9_score"] = latest_phq9.get("score")
-                                st.session_state["phq9_interpretation"] = latest_phq9.get("interpretation")
-                                st.session_state["last_phq9_date"] = pd.to_datetime(latest_phq9.get("created_at")).strftime("%Y-%m-%d")
-
-                    # The smooth transition effect you asked for!
-                    st.success("Login successful! Redirecting to dashboard...")
-                    time.sleep(1.0) 
-                    st.session_state["page"] = "Home"
-                    st.rerun()
-
-                else:
-                    # --- 2. Registration Attempt (New User) ---
-                    if db_connected:
-                        uid = register_user_db(email) # Calls the fixed registration function
-                        
-                        if uid:
-                            st.session_state["user_id"] = uid
+                    if st.button(f"Register as New User: {email}", use_container_width=True):
+                        new_id = register_user_db(email)
+                        if new_id:
+                            st.session_state["user_id"] = new_id
                             st.session_state["user_email"] = email
                             st.session_state["logged_in"] = True
-                            st.session_state["daily_goals"] = DEFAULT_GOALS.copy()
-                            st.success("New user registered and logged in! Redirecting...")
+                            st.success("Registration successful! Welcome to HarmonySphere.")
                             time.sleep(1.0)
                             st.session_state["page"] = "Home"
                             st.rerun()
                         else:
-                            # CRITICAL: This is where the error is displayed if register_user_db returns None
-                            st.error("Failed to register user in DB. Check secrets or Service Key permissions. See logs for details.")
-                    else:
-                        st.error("User not found and DB is not connected. Cannot register.")
-            else:
-                st.error("Please enter a valid email address.")
+                            st.error("Registration failed. Check database logs or connection.")
+                else:
+                    st.error("Cannot connect to the database. Running in local mode only.")
+                    
+        else:
+            st.error("Please enter a valid email address.")
+            
+
+def sidebar_status_display():
+    # Logic preserved
+    
+    # --- 1. Connection Status ---
+    db_connected = st.session_state.get("_db_connected", False)
+    ai_available = st.session_state.get("_ai_available", False)
+    logged_in = st.session_state.get("logged_in", False)
+    
+    if logged_in:
+        st.markdown(f"**Logged In as:** `{st.session_state.get('user_email', 'Local User')}`")
+    else:
+        st.markdown("**Not Logged In**")
+        
+    st.divider()
+
+    st.markdown(f"""
+    <div class='sidebar-status {'status-connected' if db_connected else 'status-local'}'>
+        Database: {'Connected (Supabase)' if db_connected else 'Local Mode (No Save)'}
+    </div>
+    <div class='sidebar-status {'status-connected' if ai_available else 'status-local'}'>
+        AI Model: {'Connected (OpenRouter)' if ai_available else 'Disabled (Missing Key)'}
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def sidebar_navigation():
+    # Logic preserved
+    st.sidebar.markdown(f"## 🌿 HarmonySphere")
+    
+    # Check if the user is logged in before showing nav
+    if not st.session_state.get("logged_in"):
+        return
+
+    # User Info and Health
+    sidebar_status_display()
+    
+    # Current Health Widget (Plant Gamification)
+    st.sidebar.markdown("### Your Wellness Plant")
+    plant_health = st.session_state.get("plant_health", 70.0)
+    
+    # Dynamic Plant Emoji and Message
+    if plant_health > 85:
+        emoji = "🌳"
+        msg = "Thriving! Keep up the great work."
+    elif plant_health > 50:
+        emoji = "🌱"
+        msg = "Healthy and growing. Water regularly!"
+    elif plant_health > 25:
+        emoji = "😟"
+        msg = "A bit droopy. Focus on your goals today."
+    else:
+        emoji = "🚨"
+        msg = "Needs immediate care! Check in with yourself."
+
+    st.sidebar.markdown(f"<h1 style='text-align:center; font-size: 3rem;'>{emoji}</h1>", unsafe_allow_html=True)
+    st.sidebar.progress(int(plant_health))
+    st.sidebar.markdown(f"<p style='text-align:center; font-size: 0.9rem;'>{msg}</p>", unsafe_allow_html=True)
+    
+    st.sidebar.divider()
+    
+    # PHQ-9 Status Display
+    phq9_score = st.session_state.get("phq9_score")
+    last_phq9_date = st.session_state.get("last_phq9_date")
+    
+    if phq9_score is not None:
+        st.sidebar.markdown(f"""
+            <p style='font-size: 0.9rem; font-weight: 600; color: #444;'>
+            Latest PHQ-9 Score: 
+            <span style='color: #FF6F91; font-size: 1.1rem;'>
+            {phq9_score}/27 
+            </span> 
+            <br>
+            <span style='font-weight: 400; font-size: 0.8rem; color: #777;'>
+            (Last check: {last_phq9_date})
+            </span>
+            </p>
+        """, unsafe_allow_html=True)
+    else:
+         st.sidebar.warning("Complete a Wellness Check-in!")
+    
+    st.sidebar.divider()
+    
+    # Navigation Buttons
+    pages = [
+        "Home", 
+        "Mindful Journaling", 
+        "Mood Tracker", 
+        "CBT Thought Record",
+        "AI Chat", 
+        "Wellness Check-in",
+        "Mindful Breathing",
+        "IoT Dashboard (ECE)",
+        "Report & Summary"
+    ]
+    
+    for page in pages:
+        if st.sidebar.button(page, use_container_width=True, key=f"nav_{page}"):
+            st.session_state["page"] = page
+            # Reset CBT form when navigating away
+            if page != "CBT Thought Record":
+                st.session_state["cbt_thought_record"] = {i: "" for i in range(len(CBT_PROMPTS))}
+            st.rerun()
+
+    st.sidebar.divider()
+    
+    # Logout button
+    if st.sidebar.button("Logout", use_container_width=True):
+        # Clear all user-specific state upon logout
+        keys_to_clear = [
+            "logged_in", "user_id", "user_email", "phq9_score", 
+            "phq9_interpretation", "last_phq9_date", "daily_journal", 
+            "mood_history", "ece_history", "cbt_history", "last_reframing_card",
+            "plant_health", "daily_goals"
+        ]
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]
+        
+        # Reset complex state objects separately
+        st.session_state["kalman_state"] = initialize_kalman()
+        st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level", "kalman_hr"])
+        st.session_state["daily_goals"] = DEFAULT_GOALS.copy() # Reset goals
+        
+        # Go back to splash/unauthenticated home
+        st.session_state["show_splash"] = True
+        st.session_state["page"] = "Home"
+        st.rerun()
+
+
+def dashboard_metric(title, value, unit="", icon="✨", color="#FF9CC2"):
+    # Logic preserved
+    st.markdown(f"""
+    <div class="metric-card">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <p style="font-size: 1rem; color: #555; margin: 0;">{title}</p>
+            <span style="font-size: 1.5rem; color: {color};">{icon}</span>
+        </div>
+        <h2 style="font-size: 2.5rem; color: {color}; margin-top: 5px; margin-bottom: 0;">
+            {value} <span style="font-size: 1.2rem; color: #777;">{unit}</span>
+        </h2>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def homepage_panel():
-    st.title("🏠 HarmonySphere Dashboard")
-    st.subheader(f"Welcome back, {st.session_state['user_email'].split('@')[0].capitalize()}!")
+    # Logic preserved
+    st.title("Welcome Back, " + (st.session_state.get("user_email", "User").split('@')[0] if '@' in st.session_state.get("user_email", "User") else st.session_state.get("user_email", "User")) + "!")
+    st.markdown("### Your Personalized Wellness Dashboard")
     st.markdown("---")
     
-    # --- PLANT HEALTH & QUOTE ---
-    col_a, col_b = st.columns([2, 3])
-    with col_a:
-        st.subheader("Your Wellness Ecosystem 🌱")
-        calculate_plant_health()
-        
-        health = st.session_state["plant_health"]
-        if health >= 85:
-            plant_status = "Flourishing! 🌻"
-        elif health >= 60:
-            plant_status = "Healthy and steady. ✨"
-        elif health >= 30:
-            plant_status = "Needs a little attention. 💧"
-        else:
-            plant_status = "Wilting. Urgent care needed! 🚨"
-            
-        st.markdown(f"**Status:** *{plant_status}*")
-        st.progress(health / 100, text=f"Health: {health:.1f}%")
-
-    with col_b:
-        st.markdown(f"#### Today's Inspiration")
-        st.markdown(f"> *{random.choice(QUOTES)}*")
-        
-    st.markdown("---")
+    # --- Row 1: Key Metrics ---
+    col1, col2, col3, col4 = st.columns(4)
     
-    # --- DAILY GOALS & STREAK ---
-    st.subheader("Daily Wellness Goals")
-    
-    goal_cols = st.columns(3)
-    
-    for i, (key, goal) in enumerate(st.session_state["daily_goals"].items()):
-        with goal_cols[i % 3]:
-            # Use safe check just in case
-            if not isinstance(goal, dict):
-                continue
-                
-            completed = goal.get("count", 0) >= goal.get("target", 1)
-            card_style = "metric-card" + (" done" if completed else " pending")
-            emoji = "✅" if completed else "⏳"
-            
-            st.markdown(f"""
-            <div class="{card_style}" style="border-left: 5px solid {'#28A745' if completed else '#FFC107'};">
-                <p style='font-size: 0.85rem; color: #555; margin-bottom: 5px;'>Goal: {goal['frequency']}</p>
-                <h4 style="margin-top: 0; margin-bottom: 5px;">{goal['name']} {emoji}</h4>
-                <p style="font-size: 0.9rem;">{goal.get('count', 0)} / {goal.get('target', 1)} Completed</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-    # --- JOURNALING QUICK VIEW ---
-    st.markdown("---")
-    st.subheader("Journal Summary")
-    if st.session_state["daily_journal"]:
-        latest_entry = st.session_state["daily_journal"][0]
-        sentiment_score = latest_entry["sentiment"]
-        
-        if sentiment_score >= 0.05:
-            sentiment_text = "Positive 😊"
-            color = "#28A745"
-        elif sentiment_score <= -0.05:
-            sentiment_text = "Negative 😞"
-            color = "#DC3545"
-        else:
-            sentiment_text = "Neutral 😐"
-            color = "#FFC107"
-
-        st.markdown(f"""
-        <div class="metric-card" style="border-left: 5px solid {color};">
-            <p style='font-size: 0.85rem; color: #555; margin-bottom: 5px;'>Latest Entry: {pd.to_datetime(latest_entry['date']).strftime('%Y-%m-%d')}</p>
-            <h4 style="margin-top: 0; margin-bottom: 5px;">Sentiment: {sentiment_text}</h4>
-            <p style="font-size: 0.9rem;">"{latest_entry['text'][:150].strip()}..."</p>
-            <a href="?page=Mindful Journaling" target="_self" style="color: #FF9CC2;">Continue Journaling &rarr;</a>
-        </div>
-        """, unsafe_allow_html=True)
+    # Mood Metric
+    latest_mood = st.session_state["mood_history"][0] if st.session_state["mood_history"] else None
+    if latest_mood:
+        mood_emoji = MOOD_EMOJI_MAP.get(latest_mood["mood"], "🤔")
+        mood_text = mood_emoji.split(" ")[1]
+        dashboard_metric("Latest Mood", mood_text, icon=mood_emoji.split(" ")[0], color="#FF6F91")
     else:
-        st.info("You haven't made a journal entry yet. Head to **Mindful Journaling** to start!")
+        dashboard_metric("Latest Mood", "N/A", icon="🤔", color="#ccc")
         
-    # --- ECE DATA (Quick Glance) ---
+    # Journal Streak Metric
+    journal_days = len(st.session_state["daily_journal"])
+    dashboard_metric("Total Journal Entries", str(journal_days), icon="📝", color="#6A8DFF")
+
+    # PHQ-9 Score Metric
+    phq9_score = st.session_state.get("phq9_score")
+    phq9_text = str(phq9_score) if phq9_score is not None else "N/A"
+    dashboard_metric("Latest PHQ-9 Score", phq9_text, "/27", icon="🧠", color="#28A745" if phq9_score is not None and phq9_score < 10 else "#FFC107")
+
+    # HR/Stress Metric
+    hr = st.session_state["latest_ece_data"].get("filtered_hr", 75.0)
+    gsr = st.session_state["latest_ece_data"].get("gsr_stress_level", 1.0)
+    # Simple color coding for stress (1.0 is low, 3.0 is high)
+    stress_color = "#28A745" if gsr < 1.5 else "#FFC107" if gsr < 2.5 else "#FF6F91"
+    dashboard_metric("Current Heart Rate", f"{hr:.0f}", "BPM", icon="❤️", color=stress_color)
+
     st.markdown("---")
-    st.subheader("Real-Time Biofeedback (ECE)")
-    latest_data = st.session_state["latest_ece_data"]
     
-    ece_col1, ece_col2, ece_col3 = st.columns(3)
-    
-    with ece_col1:
-        hr_color = "#007BFF" if 60 <= latest_data["filtered_hr"] <= 100 else "#DC3545"
-        st.metric("Heart Rate (BPM)", f"{latest_data['filtered_hr']:.1f}", delta=None, delta_color="off")
-    
-    with ece_col2:
-        stress_emoji = "😌" if latest_data["gsr_stress_level"] < 2.5 else ("🤨" if latest_data["gsr_stress_level"] < 5.0 else "🥵")
-        st.metric("GSR Stress Level", f"{latest_data['gsr_stress_level']:.2f}", delta=None, delta_color="off")
+    # --- Row 2: Goals & Quick Actions ---
+    col_goals, col_actions = st.columns([1.5, 1])
+
+    with col_goals:
+        st.subheader("Today's Wellness Goals")
+        goals = st.session_state.get("daily_goals", DEFAULT_GOALS)
         
-    with ece_col3:
-        if st.button("Start Biofeedback Session", key="start_ece_home_button", use_container_width=True):
-            st.session_state["ece_running"] = True
-            st.session_state["page"] = "IoT Dashboard (ECE)"
+        goal_keys = list(goals.keys())
+        for key in goal_keys:
+            goal = goals[key]
+            progress = min(goal["count"] / goal["target"], 1.0)
+            
+            with st.container(border=True):
+                col_g1, col_g2 = st.columns([3, 1])
+                with col_g1:
+                    st.markdown(f"**{goal['name']}** ({goal['count']}/{goal['target']})")
+                    st.progress(progress)
+                with col_g2:
+                    if progress >= 1.0:
+                        st.success("Done!")
+                    elif st.button("Complete", key=f"goal_complete_{key}", use_container_width=True):
+                        # Simple increment logic (goal is checked/reset in check_and_reset_goals())
+                        goals[key]["count"] += 1
+                        calculate_plant_health()
+                        st.session_state["daily_goals"] = goals
+                        st.toast(f"Goal '{goal['name']}' Completed! 🌱", icon="🎉")
+                        time.sleep(0.5)
+                        st.rerun()
+
+    with col_actions:
+        st.subheader("Quick Actions")
+        if st.button("Log Today's Mood", use_container_width=True):
+            st.session_state["page"] = "Mood Tracker"
+            st.rerun()
+        if st.button("Start AI Chat", use_container_width=True):
+            st.session_state["page"] = "AI Chat"
+            st.rerun()
+        if st.button("Practice Breathing", use_container_width=True):
+            st.session_state["page"] = "Mindful Breathing"
             st.rerun()
 
-# --- FUNCTIONAL FEATURE: Mindful Journaling ---
-def mindful_journaling_page():
-    st.title("📝 Mindful Journaling")
-    st.subheader("What's on your mind today?")
-    st.caption("Writing down your thoughts and feelings can help you process your emotions.")
-
-    user_id = st.session_state.get("user_id")
-    
-    # Check if a journal entry has already been completed today
-    today = datetime.now().strftime("%Y-%m-%d")
-    goal_completed = st.session_state["daily_goals"]["journal_entry"]["count"] >= st.session_state["daily_goals"]["journal_entry"]["target"]
-    
-    if goal_completed:
-        st.success("✅ Daily Journal Goal Complete! You can still write more if you like.")
-
-    # --- Journal Entry Form ---
-    with st.form(key="journal_form"):
-        journal_text = st.text_area(
-            "Write your entry below (minimum 50 characters for best analysis):", 
-            height=300,
-            key="current_journal_text"
-        )
-        
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            submit_button = st.form_submit_button("Save Entry", use_container_width=True)
-        with col2:
-            if st.session_state.get("_db_connected"):
-                st.caption("Your entries will be securely saved to your personal database.")
-            else:
-                st.warning("Database NOT connected. Entry will only be saved locally for this session.")
-
-
-    if submit_button:
-        if len(journal_text.strip()) < 50:
-            st.error("Please write at least 50 characters to ensure meaningful analysis.")
-        else:
-            # 1. Run Sentiment Analysis
-            sentiment = sentiment_compound(journal_text)
-            
-            # 2. Save to Database (and local state)
-            db_success = save_journal_db(user_id, journal_text, sentiment)
-            
-            # 3. Update Local History
-            new_entry = {
-                "date": datetime.now().isoformat(),
-                "text": journal_text,
-                "sentiment": sentiment
-            }
-            st.session_state["daily_journal"].insert(0, new_entry)
-            
-            # 4. Success message and feedback
-            if db_success:
-                st.success("Journal Entry Saved Successfully!")
-            elif not st.session_state.get("_db_connected"):
-                st.info("Entry saved to local session. Connect to database to save permanently.")
-                
-            # Provide instant sentiment feedback
-            st.markdown("---")
-            st.subheader("Instant Sentiment Feedback")
-            
-            if sentiment >= 0.05:
-                emoji = "😊"
-                sentiment_word = "Positive"
-            elif sentiment <= -0.05:
-                emoji = "😞"
-                sentiment_word = "Negative"
-            else:
-                emoji = "😐"
-                sentiment_word = "Neutral"
-                
-            st.markdown(f"**Overall Sentiment:** {sentiment_word} {emoji} (Score: **{sentiment:.2f}**)")
-            st.info("This is a simple analysis. Your feelings are complex and valid!")
-            
-            # Clear the form text
-            st.session_state["current_journal_text"] = "" 
-            st.rerun() # Rerun to update the Goal Complete status
-
-# --- FUNCTIONAL FEATURE: Mood Tracker ---
-
-def mood_tracker_page():
-    # --- Page Title ---
-    st.title("Mood Tracker 📈")
-    st.subheader("Your Emotional Journey, Visualized")
-    
-    # --- Data Loading and Setup ---
-    if st.session_state.get("mood_history") is None:
-        st.session_state["mood_history"] = []
-    
-    if not st.session_state["mood_history"]:
-        st.info("No mood logs found yet. Log a mood entry to see your history!")
-        return
-        
-    df_mood = pd.DataFrame(st.session_state["mood_history"])
-    
-    # Ensure 'date' column is in datetime format for operations
-    df_mood['date'] = pd.to_datetime(df_mood['date'])
-
-    # --- Daily Deduplication (The Fixed Section) ---
-    # The original logic caused a KeyError because it didn't use a column name in drop_duplicates.
-    
     st.markdown("---")
-    st.subheader("Your Mood History (Last 30 Days)")
-
-    # 1. Create a temporary column with only the date part (no time)
-    # This allows us to group and deduplicate by the day.
-    df_mood['date_only'] = df_mood['date'].dt.date
-
-    # 2. Sort by date descending and drop duplicates on the 'date_only' column.
-    # 'keep="first"' ensures we keep the latest log of the day.
-    df_mood_daily = (
-        df_mood
-        .sort_values('date', ascending=False)
-        .drop_duplicates(subset=['date_only'], keep='first') 
-    )
-
-    # 3. Clean up the DataFrame by removing the temporary column
-    df_mood_daily = df_mood_daily.drop(columns=['date_only']) 
     
-    # Limit the view to the last 30 unique days
-    df_mood_daily = df_mood_daily.head(30)
+    # --- Row 3: Visualization (Mood Over Time) ---
+    st.subheader("Mood Trends (Last 30 Logs)")
     
-    # Sort again for chart display (oldest to newest)
-    df_mood_daily = df_mood_daily.sort_values('date', ascending=True)
-
-    # --- Chart Generation ---
-    # Map numerical score to the emoji string for better visualization
-    df_mood_daily['mood_label'] = df_mood_daily['mood'].map(MOOD_EMOJI_MAP)
-    
-    # Create the line chart
-    fig = px.line(
-        df_mood_daily, 
-        x='date', 
-        y='mood', 
-        text='mood_label', # Use the emoji label as text on hover
-        title='Daily Emotional Trend',
-        labels={'date': 'Date', 'mood': 'Mood Score (1-10)'},
-        color_discrete_sequence=["#FF6F91"] # Pastel pink color
-    )
-    
-    # Customize layout
-    fig.update_traces(textposition="top center")
-    fig.update_layout(
-        xaxis_title=None,
-        yaxis=dict(
-            tickmode='array',
-            tickvals=list(MOOD_EMOJI_MAP.keys()),
-            ticktext=[f"{v.split(' ')[0]} {k}" for k, v in MOOD_EMOJI_MAP.items()],
-            range=[1, 11] # Set range to match possible scores
-        ),
-        hovermode="x unified",
-        margin=dict(l=20, r=20, t=40, b=20)
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-    # --- Latest Mood Entries (Table) ---
-    st.markdown("---")
-    st.subheader("Detailed Mood Log")
-    
-    # Prepare data for detailed display (using all logs, not just daily)
-    df_mood_detail = pd.DataFrame(st.session_state["mood_history"])
-    df_mood_detail['Date & Time'] = pd.to_datetime(df_mood_detail['date']).dt.strftime('%Y-%m-%d %H:%M')
-    df_mood_detail['Mood'] = df_mood_detail['mood'].map(MOOD_EMOJI_MAP)
-    
-    st.dataframe(
-        df_mood_detail[['Date & Time', 'Mood', 'note']].rename(columns={'note': 'Note/Context'}),
-        hide_index=True,
-        use_container_width=True
-    )
-
-    # --- Mood History Visualization ---
-    if st.session_state["mood_history"]:
-        st.subheader("Your Mood History (Last 30 Days)")
+    mood_data = st.session_state["mood_history"]
+    if mood_data:
+        df_mood = pd.DataFrame(mood_data)
+        # Convert to datetime and ensure the latest is at the bottom for chronological plotting
+        df_mood['date'] = pd.to_datetime(df_mood['date'])
+        df_mood = df_mood.sort_values('date').head(30)
+        df_mood['mood_label'] = df_mood['mood'].apply(lambda x: MOOD_EMOJI_MAP.get(x, "N/A"))
         
-        df_mood = pd.DataFrame(st.session_state["mood_history"])
-        df_mood['date'] = pd.to_datetime(df_mood['date']).dt.tz_localize(None)
-        
-        # Aggregate to one mood log per day (using the latest log)
-        df_mood_daily = df_mood.sort_values('date', ascending=False).drop_duplicates(df_mood['date'].dt.date)
-        df_mood_daily = df_mood_daily.head(30).sort_values('date') # Show last 30 days
-
-        # Plotly chart
         fig = px.line(
-            df_mood_daily, 
+            df_mood, 
             x='date', 
             y='mood', 
             markers=True, 
-            title='Mood Score Trend',
-            labels={'mood': 'Mood Score (1-10)', 'date': 'Date'},
-            color_discrete_sequence=['#FF9CC2']
+            height=300, 
+            title='Mood Score Over Time (1=Worst, 10=Best)',
+            template="plotly_white"
         )
-        fig.update_layout(yaxis_range=[1, 10.5])
+        
+        # Add labels to markers
+        fig.update_traces(
+            mode='lines+markers+text', 
+            text=df_mood['mood_label'].str.split(" ", expand=True)[0], # Use only the emoji
+            textposition='top center',
+            marker=dict(size=10, line=dict(width=2, color='DarkSlateGrey'))
+        )
+        
+        # Set y-axis to be discrete and labeled
+        fig.update_layout(
+            yaxis=dict(
+                tickmode='array',
+                tickvals=list(MOOD_EMOJI_MAP.keys())[:-1], # 1 to 10
+                ticktext=[MOOD_EMOJI_MAP[i] for i in range(1, 11)],
+                range=[0.5, 10.5] # Padding for the y-axis
+            ),
+            xaxis_title=None,
+            showlegend=False
+        )
+
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Log your first mood to see your trend chart!")
+        st.info("Log your mood a few times to see your personalized trends here!")
 
-# --- FUNCTIONAL FEATURE: CBT Thought Record ---
-def cbt_thought_record_page():
-    st.title("✍️ CBT Thought Record")
-    st.subheader("Challenge Negative Thoughts")
-    st.caption("This tool, based on Cognitive Behavioral Therapy, helps you identify and reframe unhelpful thought patterns.")
+# -------------------- Journaling Page --------------------
+def mindful_journaling_page():
+    # Logic preserved
+    st.title("📝 Mindful Journaling")
+    st.subheader("Reflect on your day, process your feelings, and track your thoughts.")
+    st.markdown("---")
 
-    # --- CBT Form ---
-    with st.form(key="cbt_form", clear_on_submit=True):
-        st.markdown("### 🔑 Thought Record Steps")
-        
-        # Use text_area for better input experience
-        for i, prompt in enumerate(CBT_PROMPTS):
-            # Check if the text is already stored in the session state dictionary
-            default_value = st.session_state["cbt_thought_record"].get(i, "")
-            st.session_state["cbt_thought_record"][i] = st.text_area(
-                prompt,
-                key=f"cbt_step_{i}",
-                height=100 if i not in [3, 4] else 150,
-                value=default_value
-            )
+    journal_text = st.text_area(
+        "**What's on your mind right now?**", 
+        height=250, 
+        placeholder="Write a few sentences about your thoughts, feelings, or what happened today...",
+        key="current_journal_entry"
+    )
 
-        st.markdown("---")
-        cbt_submitted = st.form_submit_button("Analyze & Reframe Thought", use_container_width=True)
-        
-    if cbt_submitted:
-        # Pass the current state to the saving function
-        cbt_data = st.session_state["cbt_thought_record"].copy()
-        
-        if cbt_data.get(0, "") and cbt_data.get(2, ""): # Ensure Situation and Thought are filled
-            save_cbt_record(cbt_data) # This function handles AI generation and local state update
-            # The save_cbt_record function calls st.success() and sets st.session_state["last_reframing_card"]
+    if st.button("Save Entry and Analyze Sentiment", use_container_width=True):
+        if len(journal_text.split()) < 5:
+            st.warning("Please write at least 5 words for a meaningful entry.")
         else:
-            st.error("Please fill out the **Situation** and the **Negative Thought** to proceed.")
+            sentiment = sentiment_compound(journal_text)
+            user_id = st.session_state.get("user_id")
+            
+            if save_journal_db(user_id, journal_text, sentiment):
+                
+                # Update local state immediately
+                new_entry = {
+                    "date": datetime.now().isoformat(),
+                    "text": journal_text,
+                    "sentiment": sentiment
+                }
+                st.session_state["daily_journal"].insert(0, new_entry)
+                
+                st.success("Journal Entry Saved!")
+                
+                # Sentiment feedback
+                if sentiment > 0.3:
+                    feedback = "That's a very positive entry! Keep focusing on the good things. 😊"
+                elif sentiment < -0.3:
+                    feedback = "I hear some negativity here. It's okay to feel that way. Writing it down is the first step. Let's process it. 🫂"
+                else:
+                    feedback = "A thoughtful, balanced entry. Reflection is key to growth. 🌱"
+                
+                st.info(f"Sentiment Analysis Score: **{sentiment:.2f}**. {feedback}")
+                
+                # Clear the text area and rerun to update the list below
+                st.session_state["current_journal_entry"] = ""
+                st.rerun()
+            else:
+                st.error("Failed to save entry. Check database connection if running outside of local mode.")
 
-    # --- Display Last Reframing Card ---
-    if st.session_state["last_reframing_card"]:
-        st.markdown("---")
-        st.subheader("Your Last Reframed Thought ✨")
+    st.markdown("---")
+    st.subheader("Your Recent Journal Entries")
+    
+    if st.session_state["daily_journal"]:
+        df_journal = pd.DataFrame(st.session_state["daily_journal"])
+        df_journal['date'] = pd.to_datetime(df_journal['date']).dt.strftime('%Y-%m-%d %H:%M')
         
-        last_record = st.session_state["last_reframing_card"]
-        
-        # Display the core record inputs
-        st.info(f"**Situation:** {last_record['situation']} | **Emotion:** {last_record['emotion']}")
-        st.warning(f"**Negative Thought:** {last_record['thought']}")
+        # Display as expandable containers
+        for index, row in df_journal.head(10).iterrows():
+            sentiment_score = row['sentiment']
+            
+            # Simple color coding for the title/border
+            if sentiment_score > 0.3:
+                color = "#28A745"
+            elif sentiment_score < -0.3:
+                color = "#FF6F91"
+            else:
+                color = "#FFC107"
+            
+            with st.expander(f"**{row['date']}** | Sentiment: **{sentiment_score:.2f}**", expanded=False):
+                st.markdown(f'<div style="border-left: 5px solid {color}; padding-left: 10px;">', unsafe_allow_html=True)
+                st.markdown(row['text'])
+                st.markdown('</div>', unsafe_allow_html=True)
 
-        # Display AI-Generated Counter-Evidence
-        st.markdown("#### The AI's Counter-Evidence (Evidence AGAINST)")
-        st.markdown(last_record['ai_reframing'])
+    else:
+        st.info("Your saved journal entries will appear here.")
+
+# -------------------- Mood Tracker Page --------------------
+def mood_tracker_page():
+    # Logic preserved
+    st.title("😊 Mood Tracker")
+    st.subheader("Check in with your emotions now. Self-awareness is the first step.")
+    st.markdown("---")
+
+    col_slider, col_mood_info = st.columns([2, 1])
+
+    with col_slider:
+        mood_score = st.slider(
+            "**How are you feeling right now?** (1 = Worst, 10 = Best)",
+            min_value=1, 
+            max_value=10, 
+            value=5,
+            step=1
+        )
         
-        # Display User's Final Reframed Thought
-        st.success(f"**Balanced Reframe (Your Takeaway):** {last_record['balanced_reframe']}")
+        current_mood = MOOD_EMOJI_MAP.get(mood_score, "🤔 Unknown")
+
+    with col_mood_info:
+        st.markdown(f"""
+        <div style="background-color: #fff0f5; padding: 20px; border-radius: 12px; margin-top: 20px; text-align: center;">
+            <p style="font-size: 1rem; color: #555; margin-bottom: 5px;">Your Current Mood Selection:</p>
+            <h1 style="font-size: 3rem; color: #FF6F91; margin: 0;">{current_mood}</h1>
+        </div>
+        """, unsafe_allow_html=True)
+
+    mood_note = st.text_area(
+        "Optional: Add a brief note about why you feel this way (e.g., 'Had a good conversation with a friend', 'Stressed about homework').",
+        placeholder="Enter your note here...",
+        key="mood_note"
+    )
+
+    if st.button("Log My Mood", use_container_width=True):
+        user_id = st.session_state.get("user_id")
         
+        if save_mood_db(user_id, mood_score, mood_note):
+            
+            # Update local state immediately
+            new_mood = {
+                "date": datetime.now().isoformat(),
+                "mood": mood_score,
+                "note": mood_note
+            }
+            st.session_state["mood_history"].insert(0, new_mood)
+            
+            st.success(f"Mood Logged: {current_mood}!")
+            
+            # Simple AI suggestion based on mood
+            if mood_score < 4:
+                ai_suggestion = safe_generate(f"User logged a low mood score of {mood_score}. Give a 1-sentence supportive message and a small suggestion (e.g., breathing exercise).")
+                st.warning(f"**A Note from Your Buddy:** {ai_suggestion}")
+            
+            # Clear note and rerun to update history
+            st.session_state["mood_note"] = ""
+            st.rerun()
+        else:
+            st.error("Failed to save mood. Check database connection.")
+
+    st.markdown("---")
+    st.subheader("Your Recent Mood History")
+    
+    if st.session_state["mood_history"]:
+        df_mood = pd.DataFrame(st.session_state["mood_history"])
+        df_mood['date'] = pd.to_datetime(df_mood['date']).dt.strftime('%Y-%m-%d %H:%M')
+        df_mood['Mood'] = df_mood['mood'].apply(lambda x: MOOD_EMOJI_MAP.get(x, "N/A"))
+        df_mood.rename(columns={'note': 'Note', 'date': 'Time Logged'}, inplace=True)
+        
+        st.dataframe(df_mood[['Time Logged', 'Mood', 'Note']].head(10), use_container_width=True, hide_index=True)
+    else:
+        st.info("Log your mood to see your history here.")
+
+# -------------------- Wellness Check-in (PHQ-9) Page --------------------
+def wellness_checkin_page():
+    # Logic preserved
+    st.title("🧠 Wellness Check-in")
+    st.subheader("The PHQ-9 is a brief self-assessment tool. Your privacy is protected.")
     st.markdown("---")
     
-    # --- History (Future implementation) ---
-    if st.session_state["cbt_history"]:
-        st.caption(f"You have {len(st.session_state['cbt_history'])} thought records saved.")
-    else:
-        st.caption("Complete a thought record to see your history here.")
-
-# --- FUNCTIONAL FEATURE: Mindful Breathing ---
-def mindful_breathing_page():
-    st.title("🧘‍♀️ Mindful Breathing")
-    st.subheader("Follow the breath cycle to calm your nervous system.")
-    st.caption("A 60-second session will complete your daily goal.")
-
-    # CSS for the Breathing Animation
-    st.markdown("""
-    <style>
-    /* Keyframes for the expanding and contracting breath circle */
-    @keyframes breath {
-        0% { transform: scale(1); background-color: #FFD6E0; }
-        40% { transform: scale(1.5); background-color: #FF9CC2; }
-        60% { transform: scale(1.5); background-color: #FF9CC2; }
-        100% { transform: scale(1); background-color: #FFD6E0; }
-    }
-
-    .breathing-circle-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 400px; /* Gives space for the animation */
-        margin-top: 20px;
-        position: relative;
-    }
-
-    .breathing-circle {
-        width: 150px;
-        height: 150px;
-        border-radius: 50%;
-        box-shadow: 0 0 20px rgba(255, 156, 194, 0.7);
-        transition: all 0.5s ease-out;
-        will-change: transform, background-color;
-        /* Animation is applied dynamically via Python */
-    }
-
-    .instruction-text {
-        position: absolute;
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: #1E1E1E;
-        opacity: 0;
-        transition: opacity 0.5s ease;
-    }
-    .instruction-text.show {
-        opacity: 1;
-    }
-
-    </style>
-    """, unsafe_allow_html=True)
-
-    # --- Session State Management ---
-    if "breathing_start_time" not in st.session_state:
-        st.session_state["breathing_start_time"] = None
-    if "breathing_duration" not in st.session_state:
-        st.session_state["breathing_duration"] = 60 # seconds for goal
-
-    # --- Button Logic ---
-    col1, col2, col3 = st.columns([1, 1, 3])
-    with col1:
-        if st.session_state["breathing_state"] == "stop":
-            if st.button("Start Breathing", use_container_width=True, key="start_breath"):
-                st.session_state["breathing_state"] = "running"
-                st.session_state["breathing_start_time"] = time.time()
-                st.rerun()
-        else:
-            if st.button("Stop Session", use_container_width=True, key="stop_breath"):
-                st.session_state["breathing_state"] = "stop"
-                st.session_state["breathing_start_time"] = None
-                st.rerun()
+    # Display last check-in date
+    last_phq9_date = st.session_state.get("last_phq9_date")
+    if last_phq9_date:
+        st.info(f"Your last check-in was on: **{last_phq9_date}**.")
     
-    # --- Animation and Tracking ---
-    placeholder = st.empty()
-    
-    if st.session_state["breathing_state"] == "running":
+    # Use a form to capture all answers at once
+    with st.form("phq9_form"):
+        st.markdown("**Over the last two weeks, how often have you been bothered by the following problems?**")
         
-        # Calculate time elapsed and remaining
-        elapsed_time = time.time() - st.session_state["breathing_start_time"]
-        remaining_time = max(0, st.session_state["breathing_duration"] - elapsed_time)
+        phq9_answers = {}
+        for i, question in enumerate(PHQ9_QUESTIONS):
+            # Use the question itself as the label
+            answer = st.radio(
+                f"**{question}**",
+                options=list(PHQ9_SCORES.keys()),
+                key=f"phq9_q_{i}",
+                horizontal=True
+            )
+            phq9_answers[i] = PHQ9_SCORES[answer]
+            
+        submitted = st.form_submit_button("Submit Wellness Check-in", use_container_width=True)
+
+    if submitted:
+        total_score = sum(phq9_answers.values())
         
-        # Determine current phase (4s inhale, 6s exhale, 10s cycle)
-        cycle_time = elapsed_time % 10
-        if 0 <= cycle_time < 4:
-            instruction = "INHALE (4s)"
-            animation = "breath_in"
-        elif 4 <= cycle_time < 10:
-            instruction = "EXHALE (6s)"
-            animation = "breath_out"
+        # Interpretation logic (standard PHQ-9 cutoffs)
+        if total_score >= 20:
+            interpretation = "Severe Depression. Please seek professional help immediately. Contact a crisis line or trusted adult."
+            st.error(f"**Score: {total_score}/27** - {interpretation} 🚨")
+        elif total_score >= 15:
+            interpretation = "Moderately Severe Depression. Professional support is strongly recommended."
+            st.warning(f"**Score: {total_score}/27** - {interpretation} ⚠️")
+        elif total_score >= 10:
+            interpretation = "Moderate Depression. Consider talking to a counselor or therapist."
+            st.info(f"**Score: {total_score}/27** - {interpretation} 💡")
+        elif total_score >= 5:
+            interpretation = "Mild Depression. Keep monitoring your mood and focus on positive self-care activities."
+            st.success(f"**Score: {total_score}/27** - {interpretation} 🌱")
         else:
-            instruction = "HOLD"
-            animation = "hold"
-        
-        # Inject animation and instruction text
-        with placeholder.container():
-            st.markdown(f"""
-            <div class="breathing-circle-container">
-                <div class="breathing-circle" style="animation: breath 10s infinite ease-in-out;"></div>
-                <div class="instruction-text show" id="instruction_text">{instruction}</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.info(f"Time Remaining: **{int(remaining_time)} seconds**")
-            
-        # Check for session completion
-        if remaining_time <= 0:
-            st.session_state["breathing_state"] = "completed"
-            st.session_state["daily_goals"]["breathing_session"]["count"] = 1
-            st.success("🎉 Breathing Session Complete! Goal achieved for today.")
-            # Clear the animation by rerunning
-            time.sleep(1) # Visual pause
+            interpretation = "Minimal Depression. You are doing well! Continue healthy habits."
+            st.success(f"**Score: {total_score}/27** - {interpretation} 🎉")
+
+        # Save to DB and update session state
+        user_id = st.session_state.get("user_id")
+        if save_phq9_db(user_id, total_score, interpretation):
+            st.session_state["phq9_score"] = total_score
+            st.session_state["phq9_interpretation"] = interpretation
+            st.session_state["last_phq9_date"] = datetime.now().strftime("%Y-%m-%d")
+            st.toast("Check-in saved!", icon="✅")
             st.rerun()
-            
-        # Re-run every second to update timer and phase
-        time.sleep(1)
+        else:
+            st.error("Failed to save check-in. Note the score manually.")
+
+# -------------------- AI Chat Page --------------------
+def ai_chat_page():
+    # Logic preserved
+    st.title("🤖 AI Chat")
+    st.subheader("Your supportive AI buddy is here to listen and offer non-judgemental advice.")
+    
+    # Check AI availability
+    if not st.session_state.get("_ai_available"):
+        st.error("The AI chat is currently disabled because the `OPENROUTER_API_KEY` is missing.")
+        st.markdown("---")
+        st.stop()
+
+    # Chat display container (reversed order for new messages at bottom)
+    chat_container = st.container(height=400, border=True)
+
+    # Display chat messages in the container
+    with chat_container:
+        messages = st.session_state.chat_messages
+        # Skip the system instruction at index 0
+        display_messages = messages[1:] if messages and messages[0].get("role") == "system" else messages
+        
+        for message in display_messages:
+            if message["role"] != "system":
+                # Use a custom avatar for the assistant
+                avatar = "🤖" if message["role"] == "assistant" else "👤"
+                st.chat_message(message["role"], avatar=avatar).markdown(message["content"])
+
+    # Chat input at the bottom
+    prompt = st.chat_input("Ask your buddy anything...")
+    
+    if prompt:
+        # 1. Display user message immediately
+        with chat_container:
+            st.chat_message("user", avatar="👤").markdown(prompt)
+
+        # 2. Add user message to state
+        st.session_state.chat_messages.append({"role": "user", "content": prompt})
+
+        # 3. Generate and stream AI response
+        with st.spinner("Buddy is thinking..."):
+            ai_response = safe_generate(prompt)
+
+        # 4. Display AI response
+        with chat_container:
+            st.chat_message("assistant", avatar="🤖").markdown(ai_response)
+        
+        # 5. Add AI response to state and rerun to update chat display persistence
+        st.session_state.chat_messages.append({"role": "assistant", "content": ai_response})
         st.rerun()
 
-    elif st.session_state["breathing_state"] == "completed":
-        st.balloons()
-        st.markdown("<div class='breathing-circle-container'><p>Goal Complete!</p></div>", unsafe_allow_html=True)
-        st.session_state["breathing_state"] = "stop" # Reset for next session
-
-    else:
-        # Initial 'stop' state
-        if st.session_state["daily_goals"]["breathing_session"]["count"] >= st.session_state["daily_goals"]["breathing_session"]["target"]:
-             st.success("✅ Daily Breathing Goal Completed!")
-        else:
-             st.info("Start a 60-second breathing session to complete your daily goal.")
-             
-        st.markdown(f"""
-        <div class="breathing-circle-container">
-            <div class="breathing-circle" style="transform: scale(1); background-color: #FFD6E0;"></div>
-            <div class="instruction-text show" id="instruction_text">Ready to Begin</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-# --- FUNCTIONAL FEATURE: AI Chat ---
-def ai_chat_page():
-    st.title("💬 AI Chat: Your Wellness Buddy")
-    st.caption("Chat with an empathetic AI designed to listen and provide non-judgemental support.")
-
-    # 1. Display Chat Messages
-    # Start loop from 1 to skip the system message (index 0)
-    # The initial 'Hello' message is at index 1
-    for message in st.session_state["chat_messages"][1:]:
-        avatar = "🧠" if message["role"] == "assistant" else "👤"
-        with st.chat_message(message["role"], avatar=avatar):
-            st.markdown(message["content"])
-
-    # 2. Handle User Input
-    if prompt := st.chat_input("Ask me anything or tell me how you're feeling..."):
-        
-        # Add user message to state and display immediately
-        st.session_state["chat_messages"].append({"role": "user", "content": prompt})
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(prompt)
-
-        # Generate AI response
-        with st.chat_message("assistant", avatar="🧠"):
-            with st.spinner("Buddy is thinking..."):
-                # Call the safe_generate function with the user's prompt
-                ai_response = safe_generate(prompt, max_tokens=600)
-                
-                # Check for critical safety response and apply styling
-                if ai_response.startswith("**🛑 STOP."):
-                    st.error(ai_response)
-                else:
-                    st.markdown(ai_response)
-
-        # Add AI response to state
-        st.session_state["chat_messages"].append({"role": "assistant", "content": ai_response})
-
-
-# --- NEW FUNCTIONAL FEATURE: Wellness Ecosystem (Plant Gamification) ---
-def wellness_ecosystem_page():
-    st.title("🌱 Wellness Ecosystem")
-    st.subheader("Your Digital Plant: A Reflection of Your Health")
-    st.caption("Keep your plant flourishing by meeting your daily wellness goals.")
-
-    calculate_plant_health() # Recalculate based on latest goals
-    health = st.session_state["plant_health"]
-
-    # --- Plant Visualization ---
-    col_plant, col_info = st.columns([1, 2])
-    
-    with col_plant:
-        if health >= 85:
-            plant_emoji = "🌳"
-            status_text = "Flourishing! You're thriving."
-            color = "#28A745"
-        elif health >= 60:
-            plant_emoji = "🌿"
-            status_text = "Healthy and steady. Keep up the great work."
-            color = "#FFC107"
-        elif health >= 30:
-            plant_emoji = "🪴"
-            status_text = "Needs attention. A few goals can help."
-            color = "#FD7E14"
-        else:
-            plant_emoji = "🥀"
-            status_text = "Wilting. Take immediate action to care for yourself."
-            color = "#DC3545"
-
-        st.markdown(f"""
-        <div style="text-align: center; margin-top: 20px; padding: 20px; border-radius: 12px; background: rgba(255, 255, 255, 0.7);">
-            <p style="font-size: 8rem; line-height: 1;">{plant_emoji}</p>
-            <h4 style="color: {color}; margin-top: 0;">{status_text}</h4>
-            <p>Health: {health:.1f}%</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    with col_info:
-        st.metric("Current Health Score", f"{health:.1f}%", delta=None, delta_color="off")
-        st.progress(health / 100)
-
-        st.markdown("---")
-        st.markdown("#### Care Actions")
-        
-        # Interaction Button (Gives a minor, temporary boost)
-        if st.button("Give it Sunlight ☀️ (Minor Boost)", use_container_width=True):
-            st.session_state["plant_health"] = min(100, health + 3.0)
-            st.toast("A little boost of light! Health +3%", icon="☀️")
-            st.rerun()
-
-        # Goal Summary
-        st.markdown("#### What Affects Health?")
-        st.markdown("""
-        * **Daily Goals:** Completing tasks like Mood Logging, Journaling, and Breathing provides the biggest boost.
-        * **Mood Score:** Higher average daily mood increases health.
-        * **Interaction:** Occasional 'Sunlight' helps, but **consistent habits are key**!
-        """)
-
-# --- NEW FUNCTIONAL FEATURE: IoT Dashboard (ECE) ---
-def iot_dashboard_page():
-    st.title("⚙️ IoT Dashboard (ECE)")
-    st.subheader("Real-Time Biofeedback Data")
-    st.caption("Simulated data showing your Heart Rate (PPG) and Stress Level (GSR).")
-    
-    # 1. Start/Stop Control
-    col_button, col_status = st.columns([1, 2])
-    
-    with col_button:
-        if not st.session_state["ece_running"]:
-            if st.button("▶️ Start Biofeedback Stream", key="start_ece", use_container_width=True):
-                st.session_state["ece_running"] = True
-                st.session_state["kalman_state"] = initialize_kalman() # Reset filter
-                # Reset DataFrame with the correct columns
-                st.session_state["physiological_data"] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level", "kalman_hr"])
-                st.rerun()
-        else:
-            if st.button("⏸️ Stop Biofeedback Stream", key="stop_ece", use_container_width=True):
-                st.session_state["ece_running"] = False
-                st.toast("Biofeedback stream stopped.", icon="⏸️")
-                st.rerun()
-
-    with col_status:
-        status_text = "Running..." if st.session_state["ece_running"] else "Stream Stopped."
-        st.info(f"Status: **{status_text}**")
-
+# -------------------- CBT Thought Record Page --------------------
+def cbt_thought_record_page():
+    # Logic preserved
+    st.title("💡 CBT Thought Record")
+    st.subheader("Challenging negative thoughts step-by-step.")
     st.markdown("---")
 
-    # 2. Real-time Metrics and Plot Placeholder
-    metric_cols = st.columns(3)
+    st.markdown("Fill out the steps below to identify and reframe an automatic negative thought.")
     
-    hr_ph = metric_cols[0].empty()
-    gsr_ph = metric_cols[1].empty()
-    time_ph = metric_cols[2].empty()
-    
-    chart_ph = st.empty()
-    
-    # 3. Simulation Loop
-    if st.session_state["ece_running"]:
+    # Form for the CBT record
+    with st.form("cbt_record_form"):
         
-        # NOTE: This loop runs only once per rerun, but the final st.rerun() makes it continuous
-        current_time = int(time.time() * 1000)
-        sim_data = generate_simulated_physiological_data(current_time)
-        
-        # --- Kalman Filter Application ---
-        # Add noise to the clean signal to simulate a noisy sensor input for the filter
-        raw_hr_measurement = sim_data["filtered_hr"] + random.gauss(0, 5) 
-        
-        kalman_hr, new_kalman_state = kalman_filter_simple(
-            raw_hr_measurement, 
-            st.session_state["kalman_state"]
+        # Step 1-3 (Input for the negative thought)
+        st.markdown("### Part 1: Capturing the Thought")
+        for i in range(3):
+            st.session_state["cbt_thought_record"][i] = st.text_input(
+                CBT_PROMPTS[i], 
+                value=st.session_state["cbt_thought_record"][i],
+                key=f"cbt_q_{i}"
+            )
+            
+        st.markdown("---")
+        st.markdown("### Part 2: Challenging the Thought")
+
+        # Step 4 (Evidence FOR)
+        st.session_state["cbt_thought_record"][3] = st.text_area(
+            CBT_PROMPTS[3],
+            value=st.session_state["cbt_thought_record"][3],
+            key=f"cbt_q_{3}",
+            height=100
         )
-        st.session_state["kalman_state"] = new_kalman_state # Update global state
         
-        # --- Update Data Structures ---
-        new_row = {
-            "time_ms": current_time,
-            "raw_ppg_signal": sim_data["raw_ppg_signal"],
-            "filtered_hr": sim_data["filtered_hr"], # The clean base signal
-            "kalman_hr": kalman_hr, # The smoothed signal
-            "gsr_stress_level": sim_data["gsr_stress_level"]
-        }
+        # Step 5 (AI-Generated Evidence AGAINST will be displayed after submission)
+        # Note: Input for this step is skipped as it's AI-generated
         
-        df_phys = pd.concat([st.session_state["physiological_data"], pd.Series(new_row).to_frame().T], ignore_index=True)
-        
-        # Keep only the last 60 seconds of data (120 points at 500ms intervals)
-        max_rows = 120 
-        if len(df_phys) > max_rows:
-            df_phys = df_phys.iloc[-max_rows:]
-            
-        st.session_state["physiological_data"] = df_phys.copy() # Use .copy() for safety
-        st.session_state["latest_ece_data"] = {"filtered_hr": kalman_hr, "gsr_stress_level": sim_data["gsr_stress_level"]}
-        
-        # --- Update Metrics ---
-        with hr_ph:
-            st.metric("Heart Rate (BPM)", f"{kalman_hr:.1f}", delta=None)
-        with gsr_ph:
-            stress_level = sim_data["gsr_stress_level"]
-            stress_emoji = "😌" if stress_level < 2.5 else ("🤨" if stress_level < 5.0 else "🥵")
-            st.metric("GSR Stress Level", f"{stress_level:.2f} {stress_emoji}", delta=None)
-        with time_ph:
-            st.caption(f"Last updated: {datetime.fromtimestamp(current_time/1000).strftime('%H:%M:%S')}")
+        st.markdown("---")
+        st.markdown("### Part 3: The Balanced Conclusion")
 
-        # --- Update Plot ---
-        with chart_ph.container():
-            st.markdown("#### Heart Rate & Stress Trend")
-            
-            # Plot HR and Kalman HR (Smoothed)
-            # Use time elapsed for a cleaner x-axis
-            df_plot = df_phys.copy()
-            df_plot['time_seconds'] = (df_plot['time_ms'] - df_plot['time_ms'].min()) / 1000
-            
-            fig_hr = px.line(
-                df_plot, 
-                x='time_seconds', 
-                y=['filtered_hr', 'kalman_hr'], 
-                title='Heart Rate (PPG) Trend',
-                labels={'value': 'BPM', 'time_seconds': 'Time Elapsed (s)'},
-                color_discrete_map={'filtered_hr': '#FF9CC2', 'kalman_hr': '#4CAF50'}
-            )
-            fig_hr.update_layout(yaxis_range=[50, 110], legend_title_text='Signal', transition_duration=50)
-            fig_hr.update_traces(name='Kalman HR (Smoothed)', selector=dict(name='kalman_hr'))
-            fig_hr.update_traces(name='Base HR (True Signal)', selector=dict(name='filtered_hr'))
-            st.plotly_chart(fig_hr, use_container_width=True)
-            
-            # Plot GSR Stress Level
-            fig_gsr = px.line(
-                df_plot, 
-                x='time_seconds', 
-                y='gsr_stress_level', 
-                title='GSR Stress Level',
-                labels={'gsr_stress_level': 'GSR Value', 'time_seconds': 'Time Elapsed (s)'},
-                color_discrete_sequence=['#007BFF']
-            )
-            fig_gsr.update_layout(yaxis_range=[0, 7], transition_duration=50)
-            st.plotly_chart(fig_gsr, use_container_width=True)
+        # Step 6 (Balanced Reframe)
+        st.session_state["cbt_thought_record"][5] = st.text_area(
+            CBT_PROMPTS[5],
+            value=st.session_state["cbt_thought_record"][5],
+            key=f"cbt_q_{5}",
+            height=100,
+            placeholder="e.g., 'Even though I struggled with one part, I still succeeded at others, and that one mistake doesn't define my worth.'"
+        )
 
-        # Pause and rerun to create the continuous stream effect
-        time.sleep(0.5) 
-        st.rerun() 
+        submitted = st.form_submit_button("Complete Thought Record and Get Reframe", use_container_width=True)
+
+    if submitted:
+        if save_cbt_record(st.session_state["cbt_thought_record"]):
+            st.rerun() # Rerun to display the newly saved card immediately
+
+    # Display the most recently completed Thought Record 
+    if st.session_state.get("last_reframing_card"):
+        card = st.session_state["last_reframing_card"]
+        st.markdown("## Your Reframing Card 🧠")
+        
+        with st.container(border=True):
+            st.markdown(f"**Date:** {pd.to_datetime(card['date']).strftime('%Y-%m-%d %H:%M')}")
+            st.markdown(f"**Emotion:** {card['emotion']}")
+            st.markdown(f"**Automatic Negative Thought:** *{card['thought']}*")
+            st.divider()
             
+            st.markdown("### The Verdict:")
+            
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.info("#### Evidence FOR the Thought")
+                st.markdown(card['evidence_for'])
+            with col_b:
+                # Use a specific AI-related element
+                st.success("#### 🤖 Evidence AGAINST (AI Reframing)")
+                st.markdown(card['ai_reframing'])
+                
+            st.divider()
+            st.success("### ✅ Your Balanced Reframe")
+            st.markdown(card['balanced_reframe'])
+            
+    st.markdown("---")
+    st.subheader("Thought Record History")
+    
+    # Display the history of CBT records
+    if st.session_state.get("cbt_history"):
+        for record in st.session_state["cbt_history"][:5]: # Show top 5
+             with st.expander(f"**{pd.to_datetime(record['date']).strftime('%Y-%m-%d')}** | Thought: {record['thought'][:50]}...", expanded=False):
+                 st.markdown(f"**Situation:** {record['situation']}")
+                 st.markdown(f"**Emotion:** {record['emotion']}")
+                 st.markdown(f"**Balanced Reframe:** {record['balanced_reframe']}")
     else:
-        # Display static data when stopped
-        if st.session_state["physiological_data"].empty:
-            st.info("Start the stream to see real-time data.")
-        else:
-            df_phys = st.session_state["physiological_data"]
-            latest = st.session_state["latest_ece_data"]
+        st.info("Complete a Cognitive Thought Record to see your history.")
+
+# -------------------- Mindful Breathing Page --------------------
+def mindful_breathing_page():
+    # Logic preserved
+    st.title("🌬️ Mindful Breathing")
+    st.subheader("Take a break. A 4-7-8 breathing exercise helps calm the nervous system.")
+    st.markdown("---")
+    
+    # Breathing parameters
+    inhale_time = 4
+    hold_time = 7
+    exhale_time = 8
+    
+    # State tracking
+    breathing_state = st.session_state.get("breathing_state", "stop")
+    
+    def start_breathing():
+        st.session_state["breathing_state"] = "running"
+        st.session_state["daily_goals"]["breathing_session"]["count"] += 1
+        st.rerun()
+
+    def stop_breathing():
+        st.session_state["breathing_state"] = "stop"
+        st.rerun()
+
+    if breathing_state == "stop":
+        st.info("Click 'Start Session' to begin the 4-7-8 guided breathing exercise.")
+        if st.button("Start Session", use_container_width=True):
+            start_breathing()
+
+    if breathing_state == "running":
+        st.markdown("## Focus on the rhythm below.")
+        
+        # Use a placeholder to continuously update the text
+        status_placeholder = st.empty()
+        
+        # --- The Breathing Loop ---
+        try:
+            # Set a fixed number of cycles for the session
+            for cycle in range(1, 3): # Run 2 full cycles
+                # 1. Inhale (4s)
+                status_placeholder.markdown(f"""
+                <div style="text-align: center; padding: 30px; border-radius: 15px; background-color: #e0f7fa;">
+                    <h1 style="color: #6A8DFF; font-size: 3rem; margin: 0;">INHALE</h1>
+                    <p style="font-size: 1.5rem; margin: 0;">(Cycle {cycle}/2) - Breathe in deep.</p>
+                </div>
+                """, unsafe_allow_html=True)
+                time.sleep(inhale_time)
+                
+                # 2. Hold (7s)
+                status_placeholder.markdown(f"""
+                <div style="text-align: center; padding: 30px; border-radius: 15px; background-color: #fff0f5;">
+                    <h1 style="color: #FF9CC2; font-size: 3rem; margin: 0;">HOLD</h1>
+                    <p style="font-size: 1.5rem; margin: 0;">(Cycle {cycle}/2) - Hold your breath.</p>
+                </div>
+                """, unsafe_allow_html=True)
+                time.sleep(hold_time)
+
+                # 3. Exhale (8s)
+                status_placeholder.markdown(f"""
+                <div style="text-align: center; padding: 30px; border-radius: 15px; background-color: #fcefee;">
+                    <h1 style="color: #28A745; font-size: 3rem; margin: 0;">EXHALE</h1>
+                    <p style="font-size: 1.5rem; margin: 0;">(Cycle {cycle}/2) - Slowly release all air.</p>
+                </div>
+                """, unsafe_allow_html=True)
+                time.sleep(exhale_time)
+
+            # End of session
+            status_placeholder.empty()
+            st.success("Breathing Session Complete! Goal marked as done. Take a moment to check in with how you feel.")
+            stop_breathing() # Reset state (will trigger rerun to update UI)
             
-            # Display last recorded metrics
-            with hr_ph:
-                st.metric("Heart Rate (BPM)", f"{latest['filtered_hr']:.1f}", delta=None)
-            with gsr_ph:
-                stress_level = latest["gsr_stress_level"]
-                stress_emoji = "😌" if stress_level < 2.5 else ("🤨" if stress_level < 5.0 else "🥵")
-                st.metric("GSR Stress Level", f"{stress_level:.2f} {stress_emoji}", delta=None)
-            with time_ph:
-                st.caption(f"Last recorded: {datetime.fromtimestamp(df_phys['time_ms'].max()/1000).strftime('%H:%M:%S')}")
-                
-            # Display history plots
-            with chart_ph.container():
-                st.markdown("#### Heart Rate & Stress Trend (Last Recorded Session)")
-                
-                df_plot = df_phys.copy()
-                df_plot['time_seconds'] = (df_plot['time_ms'] - df_plot['time_ms'].min()) / 1000
-                
-                fig_hr = px.line(
-                    df_plot, 
-                    x='time_seconds', 
-                    y=['filtered_hr', 'kalman_hr'], 
-                    title='Heart Rate (PPG) Trend',
-                    labels={'value': 'BPM', 'time_seconds': 'Time Elapsed (s)'},
-                    color_discrete_map={'filtered_hr': '#FF9CC2', 'kalman_hr': '#4CAF50'}
-                )
-                fig_hr.update_layout(yaxis_range=[50, 110], legend_title_text='Signal')
-                fig_hr.update_traces(name='Kalman HR (Smoothed)', selector=dict(name='kalman_hr'))
-                fig_hr.update_traces(name='Base HR (True Signal)', selector=dict(name='filtered_hr'))
-                st.plotly_chart(fig_hr, use_container_width=True)
-                
-                fig_gsr = px.line(
-                    df_plot, 
-                    x='time_seconds', 
-                    y='gsr_stress_level', 
-                    title='GSR Stress Level',
-                    labels={'gsr_stress_level': 'GSR Value', 'time_seconds': 'Time Elapsed (s)'},
-                    color_discrete_sequence=['#007BFF']
-                )
-                fig_gsr.update_layout(yaxis_range=[0, 7])
-                st.plotly_chart(fig_gsr, use_container_width=True)
-                
-# Placeholder functions for remaining features
-def wellness_checkin_page():
-    st.title("🩺 Wellness Check-in")
-    st.info("This is where the user answers the PHQ-9 questions and the score is interpreted.")
+        except st.runtime.scriptrunner.StopException:
+            # This is expected behavior when st.rerun() is called inside the loop
+            pass
+        except Exception:
+            # Catch other exceptions
+            status_placeholder.empty()
+            st.error("An error occurred during the breathing session.")
+            stop_breathing()
 
-def journal_analysis_page():
-    st.title("📊 Journal Analysis")
-    st.info("Plot mood scores vs. journal sentiment scores to show correlation.")
+    st.markdown("---")
+    st.markdown("### The 4-7-8 Technique")
+    st.markdown("""
+    * **Inhale** quietly through your nose for **4 seconds**.
+    * **Hold** your breath for a count of **7 seconds**.
+    * **Exhale** completely through your mouth, making a whoosh sound, for **8 seconds**.
+    """)
 
+
+# -------------------- IoT Dashboard (ECE) Page --------------------
+def iot_dashboard_page():
+    # Logic preserved
+    st.title("❤️ IoT Dashboard (ECE Demo)")
+    st.subheader("Simulating real-time Heart Rate (PPG) and Stress (GSR) data using Kalman filtering.")
+    st.markdown("---")
+    
+    # Main columns for layout
+    col_a, col_b = st.columns([2, 1])
+    
+    with col_b:
+        st.subheader("Real-time Metrics")
+        latest_data = st.session_state["latest_ece_data"]
+        
+        # Display latest HR
+        hr = latest_data.get("filtered_hr", 75.0)
+        hr_color = "#FF6F91"
+        dashboard_metric("Filtered Heart Rate", f"{hr:.0f}", "BPM", icon="❤️", color=hr_color)
+
+        # Display latest GSR/Stress
+        gsr = latest_data.get("gsr_stress_level", 1.0)
+        gsr_color = "#FF9CC2" if gsr < 1.5 else "#FFC107" if gsr < 2.5 else "#FF6F91"
+        dashboard_metric("Stress Level (GSR)", f"{gsr:.2f}", "/5.0", icon="⚡", color=gsr_color)
+
+        # Control button
+        if st.session_state["ece_running"]:
+            if st.button("Stop Simulation", key="stop_ece", use_container_width=True):
+                st.session_state["ece_running"] = False
+                st.rerun()
+        else:
+            if st.button("Start Simulation", key="start_ece", use_container_width=True):
+                st.session_state["ece_running"] = True
+                st.rerun()
+
+    with col_a:
+        st.subheader("Physiological Data Stream")
+        
+        # Placeholder for the chart and the table (if needed)
+        chart_placeholder = st.empty()
+        
+        # Simulation logic
+        if st.session_state["ece_running"]:
+            
+            # Use a time source (just milliseconds since epoch)
+            current_time_ms = int(time.time() * 1000)
+            
+            # 1. Generate new noisy data
+            raw_data = generate_simulated_physiological_data(current_time_ms)
+            
+            # 2. Apply Kalman Filter to the raw PPG signal (Heart Rate)
+            kalman_hr, new_kalman_state = kalman_filter_simple(raw_data["raw_ppg_signal"], st.session_state["kalman_state"])
+            
+            # 3. Update session state
+            st.session_state["kalman_state"] = new_kalman_state
+            
+            new_row = raw_data.copy()
+            new_row["kalman_hr"] = kalman_hr
+            
+            # Update the latest data metric display
+            st.session_state["latest_ece_data"] = {
+                "filtered_hr": kalman_hr, 
+                "gsr_stress_level": raw_data["gsr_stress_level"]
+            }
+
+            # Append new data to the DataFrame
+            df = st.session_state["physiological_data"]
+            # Ensure the row is a DataFrame for clean concatenation
+            new_df_row = pd.DataFrame([new_row])
+            # Limit the DataFrame size to the last 150 points for performance
+            st.session_state["physiological_data"] = pd.concat([df, new_df_row], ignore_index=True).tail(150)
+            df_plot = st.session_state["physiological_data"].copy()
+
+            # Create the Plotly chart (HR)
+            fig = px.line(
+                df_plot, 
+                x='time_ms', 
+                y=['raw_ppg_signal', 'filtered_hr', 'kalman_hr'], 
+                height=300, 
+                title="Heart Rate Signal (Raw vs. Filtered)",
+                labels={
+                    "value": "Heart Rate (BPM)", 
+                    "variable": "Signal Type", 
+                    "time_ms": "Time (ms)"
+                },
+                color_discrete_map={
+                    'raw_ppg_signal': 'rgba(255, 107, 107, 0.3)',  # Light Red (Noisy)
+                    'filtered_hr': 'rgb(66, 133, 244)',           # Blue (Clean)
+                    'kalman_hr': 'rgb(156, 39, 176)'              # Purple (Kalman)
+                },
+                template="plotly_white"
+            )
+
+            # Improve trace appearance
+            fig.update_traces(
+                line=dict(width=1), 
+                selector=dict(name='raw_ppg_signal')
+            )
+            fig.update_traces(
+                line=dict(width=3), 
+                selector=dict(name='filtered_hr')
+            )
+            fig.update_traces(
+                line=dict(width=2, dash='dot'), 
+                selector=dict(name='kalman_hr')
+            )
+            
+            # Display chart
+            with chart_placeholder:
+                st.plotly_chart(fig, use_container_width=True)
+
+            # Control the update speed
+            time.sleep(0.1) 
+            
+            # Crucial: Rerun to fetch the next data point
+            st.rerun() 
+            
+        else:
+            st.info("Simulation is stopped. Click 'Start Simulation' to see real-time data.")
+            with chart_placeholder:
+                # Display an empty or static plot when stopped
+                st.dataframe(pd.DataFrame(columns=['Time', 'HR (Filtered)', 'Stress (GSR)']), use_container_width=True)
+
+# -------------------- Report & Summary Page --------------------
 def report_summary_page():
-    st.title("📄 Report & Summary")
-    st.info("A comprehensive PDF/Downloadable report of the user's weekly/monthly data.")
+    # Logic preserved
+    st.title("📊 Personal Wellness Report")
+    st.subheader("Your insights over time, based on your logs.")
+    st.markdown("---")
+
+    mood_data = st.session_state["mood_history"]
+    journal_data = st.session_state["daily_journal"]
+    phq9_score = st.session_state.get("phq9_score")
+    phq9_interpretation = st.session_state.get("phq9_interpretation")
+
+    if not mood_data and not journal_data:
+        st.warning("No data yet! Log your mood and journal to see your report.")
+        return
+
+    # --- Section 1: Mood Summary ---
+    st.header("1. Mood and Emotional Trend")
+    if mood_data:
+        df_mood = pd.DataFrame(mood_data)
+        df_mood['date'] = pd.to_datetime(df_mood['date']).dt.date
+        df_mood.rename(columns={'mood': 'Mood Score'}, inplace=True)
+        
+        avg_mood = df_mood['Mood Score'].mean()
+        latest_mood = df_mood['Mood Score'].iloc[0]
+        
+        st.markdown(f"**Average Mood Score (Overall):** **{avg_mood:.2f}/10**")
+        st.markdown(f"**Latest Mood Score:** **{latest_mood}/10** ({MOOD_EMOJI_MAP.get(latest_mood)})")
+        
+        # Calculate weekly average (requires grouping by week, simplified to last 7 days mean)
+        df_mood_7d = df_mood.head(7)
+        if not df_mood_7d.empty:
+             avg_mood_7d = df_mood_7d['Mood Score'].mean()
+             st.markdown(f"**Average Mood Score (Last 7 Logs):** **{avg_mood_7d:.2f}/10**")
 
 
-# ---------- Sidebar Navigation and Auth (Icon-Based) ----------
-def sidebar_auth():
-    # Only show the sidebar content if the user is logged in AND not on the splash screen
-    if st.session_state.get("logged_in") and not st.session_state.get("show_splash"):
-        
-        st.sidebar.markdown("---")
-        st.sidebar.header("System Status")
-        
-        # --- Status Tags (Kept from original code) ---
-        ai_status_class = "status-connected" if st.session_state.get("_ai_available") else "status-local"
-        db_status_class = "status-connected" if st.session_state.get("_db_connected") else "status-local"
-        st.sidebar.markdown(
-            f"<div class='sidebar-status {ai_status_class}'>AI: <b>{'CONNECTED' if st.session_state.get('_ai_available') else 'LOCAL'}</b></div>",
-            unsafe_allow_html=True
+        # Visualization: Mood Score distribution
+        mood_counts = df_mood['Mood Score'].value_counts().sort_index()
+        fig_mood = px.bar(
+            x=mood_counts.index, 
+            y=mood_counts.values, 
+            labels={'x': 'Mood Score', 'y': 'Count'}, 
+            title='Frequency of Mood Scores Logged',
+            color=mood_counts.index,
+            color_continuous_scale=px.colors.sequential.Plasma
         )
-        st.sidebar.markdown(
-            f"<div class='sidebar-status {db_status_class}'>DB: <b>{'CONNECTED' if st.session_state.get('_db_connected') else 'NOT CONNECTED'}</b></div>",
-            unsafe_allow_html=True
+        st.plotly_chart(fig_mood, use_container_width=True)
+    else:
+        st.info("No mood logs available.")
+
+    st.markdown("---")
+    
+    # --- Section 2: Journal & Sentiment Analysis ---
+    st.header("2. Journaling and Reflection")
+    if journal_data:
+        df_journal = pd.DataFrame(journal_data)
+        df_journal['date'] = pd.to_datetime(df_journal['date']).dt.date
+        df_journal.rename(columns={'sentiment': 'Sentiment Score'}, inplace=True)
+
+        avg_sentiment = df_journal['Sentiment Score'].mean()
+        
+        st.markdown(f"**Total Entries:** **{len(df_journal)}**")
+        st.markdown(f"**Average Sentiment Score (Overall):** **{avg_sentiment:.2f}** (Range: -1.0 to 1.0)")
+
+        # Visualization: Sentiment over time
+        df_sentiment_plot = df_journal.sort_values('date').tail(30).reset_index(drop=True)
+        fig_sentiment = px.line(
+            df_sentiment_plot, 
+            x='date', 
+            y='Sentiment Score', 
+            markers=True, 
+            title='Sentiment Score of Journal Entries Over Time',
+            template="plotly_white"
         )
-        st.sidebar.markdown("---")
+        fig_sentiment.add_hline(y=0.0, line_dash="dot", annotation_text="Neutral", annotation_position="bottom right")
+        st.plotly_chart(fig_sentiment, use_container_width=True)
+    else:
+        st.info("No journal entries available.")
 
-        st.sidebar.caption(f"Welcome, {st.session_state['user_email'].split('@')[0].capitalize()}!")
-        
-        # Logged-in Navigation with Icons
-        st.sidebar.header("Features")
-        
-        # Define Pages with Aesthetic Emojis/Icons
-        pages = {
-            "🏠 Home": "Home",
-            "📝 Mindful Journaling": "Mindful Journaling",
-            "📈 Mood Tracker": "Mood Tracker",
-            "✍️ CBT Thought Record": "CBT Thought Record",
-            "💬 AI Chat": "AI Chat",
-            "🧘‍♀️ Mindful Breathing": "Mindful Breathing",
-            "🌱 Wellness Ecosystem": "Wellness Ecosystem",
-            "⚙️ IoT Dashboard (ECE)": "IoT Dashboard (ECE)",
-        }
-        
-        # Use a radio button for navigation (cleaner UX than buttons)
-        page_keys = list(pages.keys())
-        current_index = page_keys.index(next((k for k, v in pages.items() if v == st.session_state["page"]), "🏠 Home"))
-        
-        selected_page_key = st.sidebar.radio(
-            "Go to:", 
-            options=page_keys, 
-            index=current_index,
-            key="navigation_radio"
+    st.markdown("---")
+    
+    # --- Section 3: Wellness Check-in (PHQ-9) ---
+    st.header("3. Latest Wellness Check-in")
+    if phq9_score is not None:
+        st.metric(
+            label="Latest PHQ-9 Score", 
+            value=f"{phq9_score}/27", 
+            delta_color="off"
         )
-        st.session_state["page"] = pages[selected_page_key]
+        st.info(f"**Interpretation:** {phq9_interpretation}")
+        st.markdown(f"*(Based on check-in from {st.session_state.get('last_phq9_date', 'N/A')})*")
+    else:
+        st.info("Complete the **Wellness Check-in** page to see your latest score and interpretation.")
         
-        st.sidebar.markdown("---")
-        if st.sidebar.button("Logout", key="logout_button", use_container_width=True):
-            # Clear all session state variables for a clean logout
-            for key in list(st.session_state.keys()):
-                if not key.startswith("_"): 
-                    # Only clear keys that are not system/cached resources
-                    if key in st.session_state and key not in ["logged_in", "show_splash", "page"]:
-                        del st.session_state[key]
-                        
-            st.session_state["logged_in"] = False
-            st.session_state["show_splash"] = True # Go back to splash
-            st.session_state["page"] = "Home"
-            st.rerun()
-
-# Run auth and navigation section (this must run first)
-sidebar_auth()
-
-# Create a main placeholder for the application content
+        
+# -------------------- MAIN APP EXECUTION --------------------
+# Main placeholder for content
 app_placeholder = st.empty()
 
 # ---------- MAIN APPLICATION LOGIC (Triple Flow) ----------
 with app_placeholder.container():
     
+    # 1. Show Splash Screen first (blocks other content)
     if st.session_state.get("show_splash"):
-        # 1. Show Splash Screen first (blocks other content)
         app_splash_screen()
         
+    # 2. Transition to Centered Login
     elif not st.session_state.get("logged_in"):
-        # 2. Transition to Centered Login
         unauthenticated_home()
 
+    # 3. Transition to Authenticated Dashboard
     else:
-        # 3. Transition to Authenticated Dashboard
+        # Load Sidebar Navigation
+        sidebar_navigation()
+        
         current_page = st.session_state["page"]
         
         if current_page == "Home":
@@ -1790,17 +1887,13 @@ with app_placeholder.container():
             wellness_checkin_page()
         elif current_page == "AI Chat":
             ai_chat_page() 
-        elif current_page == "Wellness Ecosystem":
-            wellness_ecosystem_page()
         elif current_page == "Mindful Breathing":
             mindful_breathing_page()
         elif current_page == "CBT Thought Record":
             cbt_thought_record_page()
-        elif current_page == "Journal Analysis":
-            journal_analysis_page()
-        elif current_page == "IoT Dashboard (ECE)": 
-            iot_dashboard_page()
         elif current_page == "Report & Summary": 
             report_summary_page()
+        elif current_page == "IoT Dashboard (ECE)": 
+            iot_dashboard_page()
         else:
             st.warning("Page not found or not yet implemented.")
