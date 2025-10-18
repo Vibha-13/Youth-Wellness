@@ -100,118 +100,122 @@ st.set_page_config(
 )
 
 def setup_page_and_layout():
-    # --- CSS STYLING FOR MODERN LOOK & TRANSITIONS ---
-    st.markdown("""
-    <style>
-    /* 1. Global Background and Typography */
-    .stApp { 
-        background: #f7f9fb; /* Very light gray/off-white background */
-        color: #1E1E1E; 
-        font-family: 'Poppins', sans-serif; 
-    }
-    .main .block-container { 
-        padding: 1.5rem 4rem; /* Adjusted padding */
-    }
-    
-    /* 2. CRITICAL: Target the Streamlit Text Area's internal input element */
-    textarea {
-        color: black !important; 
-        -webkit-text-fill-color: black !important; 
-        opacity: 1 !important; 
-        background-color: white !important; 
-        border: 1px solid #ccc !important; 
-        border-radius: 8px !important;
-    }
+    # --- CSS STYLING FOR SOFT PASTEL WELLNESS VIBE ---
+st.markdown("""
+<style>
+/* 1. Global Background and Typography */
+.stApp { 
+    background: linear-gradient(135deg, #fcefee, #e0f7fa); /* soft pastel gradient */
+    color: #1E1E1E; 
+    font-family: 'Poppins', sans-serif; 
+}
+.main .block-container { 
+    padding: 2rem 3rem;
+}
 
-    /* 3. Custom Card Style (The Core Mobile App Look) */
-    .metric-card {
-        padding: 20px;
-        border-radius: 12px;
-        /* Soft, subtle shadow for depth */
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); 
-        background-color: #ffffff; /* White card background */
-        transition: transform 0.2s, box-shadow 0.2s; /* Hover transition */
-        margin-bottom: 20px;
-        border: none;
-    }
-    .metric-card:hover { 
-        transform: translateY(-3px); /* Lifts the card slightly */
-        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12); /* Deeper shadow on hover */
-        cursor: pointer;
-    }
+/* 2. Streamlit TextArea */
+textarea {
+    color: #1E1E1E !important;
+    -webkit-text-fill-color: #1E1E1E !important;
+    opacity: 1 !important;
+    background-color: #ffffff !important;
+    border: 2px solid #FFD6E0 !important;
+    border-radius: 12px !important;
+    padding: 10px !important;
+    transition: all 0.3s ease-in-out;
+}
+textarea:focus {
+    border-color: #FF9CC2 !important;
+    box-shadow: 0 0 8px rgba(255, 156, 194, 0.5);
+}
 
-    /* 4. Custom Sidebar Colors/Style */
-    [data-testid="stSidebar"] {
-        background-color: #ffffff; /* White sidebar */
-        box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
-    }
-    
-    /* 5. Primary Button Style (Vibrant and Rounded) */
-    .stButton>button { 
-        color: #FFFFFF; 
-        background: #5D54A4; /* Deep Purple */
-        border-radius: 25px; 
-        padding: 10px 20px; 
-        font-weight: 600; 
-        border: none; 
-        box-shadow: 0 3px 5px rgba(0,0,0,0.1);
-        transition: all .2s;
-    }
-    .stButton>button:hover { 
-        background: #7A72BF;
-    }
-    
-    /* 6. Custom Sidebar Status */
-    .sidebar-status {
-        padding: 5px 10px;
-        border-radius: 8px;
-        margin-bottom: 8px;
-        font-size: 0.85rem;
-        font-weight: 500;
-        text-transform: uppercase;
-    }
-    .status-connected { background-color: #D4EDDA; color: #155724; border-left: 4px solid #28A745; }
-    .status-local { background-color: #FFEEDD; color: #856404; border-left: 4px solid #FFC107; }
-    
-    /* 7. Hiding Streamlit Footer */
-    footer {
-        visibility: hidden;
-    }
+/* 3. Custom Card Style (Glassy / Wellness Look) */
+.metric-card {
+    padding: 25px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+    transition: transform 0.3s, box-shadow 0.3s, background 0.3s;
+    margin-bottom: 20px;
+    border: none;
+}
+.metric-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 25px rgba(0,0,0,0.1);
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.9);
+}
 
-    /* 8. Breathing Circle Styles (Used existing one for consistency) */
-    .breathing-circle {
-        width: 100px;
-        height: 100px;
-        background-color: #5D54A4;
-        border-radius: 50%;
-        margin: 50px auto;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 1.5rem;
-        font-weight: 700;
-        transition: all 4s ease-in-out;
-    }
-    .breathe-inhale {
-        animation: scaleIn 4s infinite alternate;
-    }
-    .breathe-exhale {
-        animation: scaleOut 6s infinite alternate;
-    }
-    @keyframes scaleIn {
-        from { transform: scale(1); }
-        to { transform: scale(2.5); }
-    }
-    @keyframes scaleOut {
-        from { transform: scale(2.5); }
-        to { transform: scale(1); }
-    }
+/* 4. Custom Sidebar Colors/Style */
+[data-testid="stSidebar"] {
+    background: linear-gradient(to bottom, #fff0f5, #e0f7fa);
+    box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+}
 
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+/* 5. Primary Button Style (Pastel Rounded) */
+.stButton>button {
+    color: #FFFFFF;
+    background: #FF9CC2;
+    border-radius: 25px;
+    padding: 10px 25px;
+    font-weight: 600;
+    border: none;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    transition: all 0.3s;
+}
+.stButton>button:hover {
+    background: #FF6F91;
+}
+
+/* 6. Sidebar Status Tags */
+.sidebar-status {
+    padding: 6px 12px;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+.status-connected { background-color: #D4EDDA; color: #155724; border-left: 4px solid #28A745; }
+.status-local { background-color: #FFF3CD; color: #856404; border-left: 4px solid #FFC107; }
+
+/* 7. Hide Streamlit Footer */
+footer {
+    visibility: hidden;
+}
+
+/* 8. Breathing Circle (Animated Calm Effect) */
+.breathing-circle {
+    width: 120px;
+    height: 120px;
+    background: #FF9CC2;
+    border-radius: 50%;
+    margin: 50px auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 700;
+    transition: all 4s ease-in-out;
+}
+.breathe-inhale {
+    animation: scaleIn 4s infinite alternate ease-in-out;
+}
+.breathe-exhale {
+    animation: scaleOut 6s infinite alternate ease-in-out;
+}
+@keyframes scaleIn {
+    from { transform: scale(1); }
+    to { transform: scale(2); }
+}
+@keyframes scaleOut {
+    from { transform: scale(2); }
+    to { transform: scale(1); }
+}
+</style>
+""", unsafe_allow_html=True)
 
 # Call the setup function early in the main script flow
 setup_page_and_layout()
