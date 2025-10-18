@@ -183,7 +183,8 @@ textarea:focus, input[type="text"]:focus, input[type="email"]:focus {{
 footer {{
     visibility: hidden;
 }}
-/* Breathing Effect CSS */
+
+/* Breathing Effect CSS (NEW VISUALS) */
 @keyframes pulse-in {
     0% { transform: scale(0.6); opacity: 0.8; }
     100% { transform: scale(1.0); opacity: 1.0; }
@@ -224,6 +225,7 @@ footer {{
     animation: pulse-out 8s ease-in-out forwards; /* 8 seconds exhale */
     background-color: #6A8DFF;
 }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -551,9 +553,6 @@ def sentiment_compound(text: str) -> float:
 
 # ---------- Supabase helpers (DB functions) ----------
 
-# !!! FIX APPLIED HERE: Added exception logging for debugging !!!
-# app.py (around line 418)
-
 def register_user_db(email: str):
     """
     Inserts a new user entry into the 'users' and 'profiles' tables 
@@ -564,9 +563,7 @@ def register_user_db(email: str):
     
     # Check if the client initialization failed (e.g., key is missing)
     if not admin_client:
-        # ------------------ ADD THIS LINE (Around Line 424) ------------------
         st.error("Admin Client Initialization Error: Please ensure `SUPABASE_SERVICE_KEY` and `SUPABASE_URL` are set correctly in your Streamlit secrets file.")
-        # ---------------------------------------------------------------------
         return None 
         
     # 1. Generate a valid UUID for the new user ID
@@ -593,13 +590,8 @@ def register_user_db(email: str):
         return new_user_id
             
     except Exception as e:
-        # Assuming you have already uncommented this line to see the detailed error
         st.error(f"DB Insert Error: {e}") 
         return None
-
-# app.py (Around Line 458)
-
-# app.py (Around Line 458)
 
 def get_user_by_email_db(email: str):
     """
@@ -1590,13 +1582,13 @@ def cbt_thought_record_page():
     else:
         st.info("Complete a Cognitive Thought Record to see your history.")
 
-# -------------------- Mindful Breathing Page --------------------
 # -------------------- Mindful Breathing Page (UPDATED WITH VISUALS) --------------------
 def mindful_breathing_page():
     st.title("🌬️ Mindful Breathing")
     st.subheader("Follow the circle: Grow to Inhale, Pause to Hold, Shrink to Exhale.")
     st.markdown("---")
     
+    # Breathing parameters
     inhale_time = 4
     hold_time = 7
     exhale_time = 8
@@ -1635,50 +1627,61 @@ def mindful_breathing_page():
              return # Exit the function early
 
         # --- The Breathing Loop ---
-        for cycle in range(1, 4): # Run 3 full cycles for a good session
-            
-            # 1. Inhale (4s) - Circle grows
-            with circle_placeholder:
-                st.markdown(f"""
-                <div class="breathing-circle inhale">
-                    <p style="font-size: 2.5rem; margin: 0;">INHALE</p>
-                    <p style="font-size: 1rem; margin: 0;">4 SECONDS</p>
-                </div>
-                """, unsafe_allow_html=True)
-            with status_placeholder:
-                st.info(f"Cycle {cycle}/3: Breathe in deep...")
-            time.sleep(inhale_time)
-            
-            # 2. Hold (7s) - Circle is large and steady
-            with circle_placeholder:
-                st.markdown(f"""
-                <div class="breathing-circle hold">
-                    <p style="font-size: 2.5rem; margin: 0;">HOLD</p>
-                    <p style="font-size: 1rem; margin: 0;">7 SECONDS</p>
-                </div>
-                """, unsafe_allow_html=True)
-            with status_placeholder:
-                st.warning(f"Cycle {cycle}/3: Hold your breath...")
-            time.sleep(hold_time)
+        try:
+            for cycle in range(1, 4): # Run 3 full cycles for a good session
+                
+                # 1. Inhale (4s) - Circle grows
+                with circle_placeholder:
+                    st.markdown(f"""
+                    <div class="breathing-circle inhale">
+                        <p style="font-size: 2.5rem; margin: 0;">INHALE</p>
+                        <p style="font-size: 1rem; margin: 0;">4 SECONDS</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with status_placeholder:
+                    st.info(f"Cycle {cycle}/3: Breathe in deep...")
+                time.sleep(inhale_time)
+                
+                # 2. Hold (7s) - Circle is large and steady
+                with circle_placeholder:
+                    st.markdown(f"""
+                    <div class="breathing-circle hold">
+                        <p style="font-size: 2.5rem; margin: 0;">HOLD</p>
+                        <p style="font-size: 1rem; margin: 0;">7 SECONDS</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with status_placeholder:
+                    st.warning(f"Cycle {cycle}/3: Hold your breath...")
+                time.sleep(hold_time)
 
-            # 3. Exhale (8s) - Circle shrinks
-            with circle_placeholder:
-                st.markdown(f"""
-                <div class="breathing-circle exhale">
-                    <p style="font-size: 2.5rem; margin: 0;">EXHALE</p>
-                    <p style="font-size: 1rem; margin: 0;">8 SECONDS</p>
-                </div>
-                """, unsafe_allow_html=True)
-            with status_placeholder:
-                st.success(f"Cycle {cycle}/3: Slowly release...")
-            time.sleep(exhale_time)
+                # 3. Exhale (8s) - Circle shrinks
+                with circle_placeholder:
+                    st.markdown(f"""
+                    <div class="breathing-circle exhale">
+                        <p style="font-size: 2.5rem; margin: 0;">EXHALE</p>
+                        <p style="font-size: 1rem; margin: 0;">8 SECONDS</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with status_placeholder:
+                    st.success(f"Cycle {cycle}/3: Slowly release...")
+                time.sleep(exhale_time)
 
-        # End of session
-        circle_placeholder.empty()
-        status_placeholder.empty()
-        st.success("Breathing Session Complete! Goal achieved. Take a moment to check in with how you feel.")
-        stop_breathing() # Reset state
-        
+            # End of session
+            circle_placeholder.empty()
+            status_placeholder.empty()
+            st.success("Breathing Session Complete! Goal achieved. Take a moment to check in with how you feel.")
+            stop_breathing() # Reset state
+            
+        except st.runtime.scriptrunner.StopException:
+             # This is expected behavior when st.rerun() is called inside the loop
+             pass
+        except Exception:
+             # Catch other exceptions
+             circle_placeholder.empty()
+             status_placeholder.empty()
+             st.error("An error occurred during the breathing session.")
+             stop_breathing()
+
     st.markdown("---")
     st.markdown("### The 4-7-8 Technique")
     st.markdown("""
@@ -1686,6 +1689,7 @@ def mindful_breathing_page():
     * **Hold** your breath for a count of **7 seconds** (Circle stays large).
     * **Exhale** completely through your mouth for **8 seconds** (Circle shrinks).
     """)
+
 
 # -------------------- IoT Dashboard (ECE) Page --------------------
 def iot_dashboard_page():
