@@ -143,10 +143,14 @@ textarea:focus, input[type="text"]:focus, input[type="email"]:focus {{
     background: linear-gradient(to bottom, #fff0f5, #e0f7fa);
     box-shadow: 2px 0 10px rgba(0,0,0,0.05);
     transition: transform 0.3s ease-in-out;
+    /* CRITICAL: Hide when not logged in or during splash */
+    {'visibility: hidden; transform: translateX(-100%); width: 0 !important;' if not (is_logged_in and not st.session_state.get("show_splash")) else ''}
+}}
+/* Ensures the sidebar is completely gone */
+[data-testid="stSidebar"] > div:first-child {{
+    {'width: 0 !important;' if not (is_logged_in and not st.session_state.get("show_splash")) else ''}
 }}
 
-/* Conditional CSS to HIDE the sidebar immediately upon load when NOT logged in */
-{'[data-testid="stSidebar"] { visibility: hidden; transform: translateX(-100%); }' if not is_logged_in else ''}
 
 /* 5. Primary Button Style */
 .stButton>button {{
@@ -512,7 +516,8 @@ def register_user_db(email: str):
         # 1. Insert ONLY into the 'profiles' table 
         admin_client.table("profiles").insert({
             "id": new_user_id, # FIX: Uses the correct 'id' column from your schema
-            "created_at": current_time
+            "created_at": current_time,
+            "email": email # Add email here for lookup
         }).execute()
         
         return new_user_id
@@ -529,11 +534,6 @@ def get_user_by_email_db(email: str):
     try:
         # Try finding in the 'profiles' table
         res = supabase_client.table("profiles").select("id").eq("email", email).execute()
-        if res.data:
-             return res.data or []
-        
-        # Fallback to check a custom 'users' table if it exists (for compatibility)
-        res = supabase_client.table("users").select("id").eq("email", email).execute()
         return res.data or []
 
     except Exception:
@@ -744,21 +744,28 @@ def app_splash_screen():
         # Custom HTML/CSS for a large, centered title
         st.markdown("""
         <div style="text-align: center; margin-top: 20vh; animation: fadeIn 2s ease-in-out;">
-            <h1 style="font-size: 5rem; color: #FF9CC2; margin-bottom: 0;">HarmonySphere</h1>
-            <p style="font-size: 1.5rem; color: #555;">Your Wellness Companion</p>
+            <h1 style="font-size: 5rem; color: #FF9CC2; margin-bottom: 0; animation: bounce 1.5s infinite alternate;">HarmonySphere</h1>
+            <p style="font-size: 1.5rem; color: #555;">Your Youth Wellness Companion</p>
         </div>
         <style>
         @keyframes fadeIn {
             0% { opacity: 0; transform: translateY(20px); }
             100% { opacity: 1; transform: translateY(0); }
         }
+        @keyframes bounce {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-10px); }
+        }
         </style>
         """, unsafe_allow_html=True)
 
     # Use a small delay to create the transition effect
-    time.sleep(1.5) 
-    st.session_state["show_splash"] = False
-    st.rerun()
+    # This delay MUST be outside the IF block, but here we enforce the rerunning condition
+    if st.session_state["show_splash"]:
+        time.sleep(1.5) 
+        st.session_state["show_splash"] = False
+        # Crucial: Rerun to proceed to the next stage (unauthenticated_home)
+        st.rerun() 
 
 # !!! FIX APPLIED HERE: Restructured for centered, unauthenticated login !!!
 def unauthenticated_home():
@@ -789,9 +796,9 @@ def unauthenticated_home():
         if submitted:
             if email and "@" in email:
                 # Clear existing session data before logging in
+                # This logic is kept for robust multi-user capability
                 for key in ["user_id", "user_email", "phq9_score", "phq9_interpretation", "kalman_state", "daily_journal", "mood_history", "physiological_data", "ece_history", "plant_health", "cbt_history", "last_reframing_card"]:
                     if key in st.session_state:
-                        # Skip if the key is already set to None or an empty container type, but ensure sensitive ones are cleared.
                         if key in ["user_id", "user_email", "phq9_score", "phq9_interpretation"]:
                             st.session_state[key] = None
                         elif key in ["kalman_state"]:
@@ -1390,23 +1397,25 @@ def report_summary_page():
 
 # ---------- Sidebar Navigation and Auth (Icon-Based) ----------
 def sidebar_auth():
-    st.sidebar.markdown("---")
-    st.sidebar.header("System Status")
-    
-    # --- Status Tags (Kept from original code) ---
-    ai_status_class = "status-connected" if st.session_state.get("_ai_available") else "status-local"
-    db_status_class = "status-connected" if st.session_state.get("_db_connected") else "status-local"
-    st.sidebar.markdown(
-        f"<div class='sidebar-status {ai_status_class}'>AI: <b>{'CONNECTED' if st.session_state.get('_ai_available') else 'LOCAL'}</b></div>",
-        unsafe_allow_html=True
-    )
-    st.sidebar.markdown(
-        f"<div class='sidebar-status {db_status_class}'>DB: <b>{'CONNECTED' if st.session_state.get('_db_connected') else 'NOT CONNECTED'}</b></div>",
-        unsafe_allow_html=True
-    )
-    st.sidebar.markdown("---")
+    # Only show the sidebar content if the user is logged in AND not on the splash screen
+    if st.session_state.get("logged_in") and not st.session_state.get("show_splash"):
+        
+        st.sidebar.markdown("---")
+        st.sidebar.header("System Status")
+        
+        # --- Status Tags (Kept from original code) ---
+        ai_status_class = "status-connected" if st.session_state.get("_ai_available") else "status-local"
+        db_status_class = "status-connected" if st.session_state.get("_db_connected") else "status-local"
+        st.sidebar.markdown(
+            f"<div class='sidebar-status {ai_status_class}'>AI: <b>{'CONNECTED' if st.session_state.get('_ai_available') else 'LOCAL'}</b></div>",
+            unsafe_allow_html=True
+        )
+        st.sidebar.markdown(
+            f"<div class='sidebar-status {db_status_class}'>DB: <b>{'CONNECTED' if st.session_state.get('_db_connected') else 'NOT CONNECTED'}</b></div>",
+            unsafe_allow_html=True
+        )
+        st.sidebar.markdown("---")
 
-    if st.session_state.get("logged_in"):
         st.sidebar.caption(f"Welcome, {st.session_state['user_email'].split('@')[0].capitalize()}!")
         
         # Logged-in Navigation with Icons
@@ -1450,10 +1459,6 @@ def sidebar_auth():
             st.session_state["page"] = "Home"
             st.rerun()
 
-    else:
-        # Unauthenticated: Sidebar only shows status
-        st.sidebar.info("Log in on the main screen to start.")
-
 # Run auth and navigation section (this must run first)
 sidebar_auth()
 
@@ -1464,7 +1469,7 @@ app_placeholder = st.empty()
 with app_placeholder.container():
     
     if st.session_state.get("show_splash"):
-        # 1. Show Splash Screen first
+        # 1. Show Splash Screen first (blocks other content)
         app_splash_screen()
         
     elif not st.session_state.get("logged_in"):
