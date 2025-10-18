@@ -1250,21 +1250,17 @@ def unauthenticated_home():
     # Display the main marketing content when not submitted
     if not st.session_state.get("logged_in"):
         
-        # Use columns to center the content horizontally
-        col_left, col_center, col_right = st.columns([1, 2, 1])
-
-        with col_center:
-            st.markdown(f"""
-            <div style="text-align: center; padding: 40px; border: 2px solid #5D54A4; border-radius: 15px; background-color: #F7F7FF;">
-                <h1 style="color: #5D54A4; margin-top: 0;">HarmonySphere 🌱</h1>
-                <p style="font-size: 1.2em; color: #333;">Integrate Mindful Self-Care with Digital Wellness.</p>
-                <h3 style="color: #5D54A4; margin-top: 20px;">Access Your Dashboard</h3>
-                <p>Please use the login form on the left sidebar to access the app's features.</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown("---")
-            st.info("Remember: HarmonySphere is a support tool, not a substitute for medical advice.")
+        st.markdown(f"""
+        <div style="text-align: center; padding: 40px; border: 2px solid #5D54A4; border-radius: 15px; background-color: #F7F7FF;">
+            <h1 style="color: #5D54A4; margin-top: 0;">HarmonySphere 🌱</h1>
+            <p style="font-size: 1.2em; color: #333;">Integrate Mindful Self-Care with Digital Wellness.</p>
+            <h3 style="color: #5D54A4; margin-top: 20px;">Access Your Dashboard</h3>
+            <p>Please use the login form on the left sidebar to access the app's features.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        st.info("Remember: HarmonySphere is a support tool, not a substitute for medical advice.")
 
 
 # ---------- MAIN APPLICATION SETUP ----------
@@ -1284,12 +1280,13 @@ st.markdown("""
     .st-emotion-cache-1pxx9r4 {padding-top: 30px;} 
     h1, h2, h3 {color: #5D54A4;}
     .stButton>button {background-color: #5D54A4; color: white;}
-    /* Fix for sidebar content padding */
+    /* Fix for sidebar content */
     .st-emotion-cache-6q9sum {padding-top: 1rem;} 
 </style>
 """, unsafe_allow_html=True)
 
 # 1. Initialize session state, DB, and AI clients
+# NOTE: The cache clear is inside this function now.
 initialize_session_state()
 
 # 2. Render Sidebar
