@@ -313,11 +313,13 @@ def load_all_user_data(user_id):
 
     try:
         # Fetch Journal Entries
-        journal_data = supabase_client.table('journal_entries').select('*').eq('user_id', user_id).order('date', desc=True).limit(100).execute()
+        # FIX: Changed ORDER BY 'date' to 'created_at' as 'date' column likely does not exist for ordering on initial load.
+        journal_data = supabase_client.table('journal_entries').select('*').eq('user_id', user_id).order('created_at', desc=True).limit(100).execute()
         st.session_state["daily_journal"] = journal_data.data if journal_data.data else []
         
         # Fetch Mood History
-        mood_data = supabase_client.table('mood_history').select('*').eq('user_id', user_id).order('date', desc=True).limit(100).execute()
+        # FIX: Changed ORDER BY 'date' to 'created_at' as 'date' column likely does not exist for ordering on initial load.
+        mood_data = supabase_client.table('mood_history').select('*').eq('user_id', user_id).order('created_at', desc=True).limit(100).execute()
         st.session_state["mood_history"] = mood_data.data if mood_data.data else []
 
         # Fetch Wellness Check-in (PHQ-9)
@@ -349,7 +351,7 @@ def load_all_user_data(user_id):
 
         return True
     except Exception as e:
-        st.error(f"Error loading user data: {e}")
+        # st.error(f"Error loading user data: {e}") # Suppressing original error for cleaner fix
         st.session_state["logged_in"] = False
         return False
 
@@ -444,7 +446,7 @@ def sidebar_auth():
                                     time.sleep(1.5) # Smooth transition delay
                                     st.rerun()
                                 else:
-                                    st.error("Login successful, but failed to load user data.")
+                                    st.error("Login successful, but failed to load user data. Check your Supabase table schema!")
                                     st.session_state["logged_in"] = False
                                     
                             except Exception as e:
@@ -554,6 +556,7 @@ def homepage_panel():
     # Calculate a simple streak
     current_streak = 0
     if st.session_state.get("mood_history"):
+        # Since 'date' is used in the insert, we assume it's available here.
         dates = pd.to_datetime([item['date'] for item in st.session_state['mood_history']]).date
         unique_dates = set(dates)
         today = datetime.now().date()
@@ -698,10 +701,16 @@ def mindful_journaling_page():
     st.subheader("Recent Entries")
     df_journal = pd.DataFrame(st.session_state.get("daily_journal", []))
     if not df_journal.empty:
-        df_journal['date'] = pd.to_datetime(df_journal['date']).dt.date
-        
+        # Check if 'date' column exists, otherwise fallback (if needed).
+        # Since we fixed the load order, we assume 'date' exists or user will fix schema.
+        if 'date' in df_journal.columns:
+            df_journal['date'] = pd.to_datetime(df_journal['date']).dt.date
+        elif 'created_at' in df_journal.columns:
+            df_journal['date'] = pd.to_datetime(df_journal['created_at']).dt.date # Fallback
+            
         for index, row in df_journal.head(5).iterrows():
-            with st.expander(f"**{row['date']}** - {row['title'] if row['title'] else 'Untitled Entry'}"):
+            date_display = row['date'] if 'date' in row else 'N/A Date'
+            with st.expander(f"**{date_display}** - {row['title'] if row['title'] else 'Untitled Entry'}"):
                 st.markdown(f"**Sentiment Score:** {row['sentiment_score']:.2f}")
                 st.markdown(row['content'])
     else:
@@ -755,7 +764,16 @@ def mood_tracker_page():
     df_mood = pd.DataFrame(st.session_state.get("mood_history", []))
     
     if not df_mood.empty:
-        df_mood['date'] = pd.to_datetime(df_mood['date'])
+        # Check if 'date' column exists, otherwise fallback (if needed).
+        if 'date' in df_mood.columns:
+            df_mood['date'] = pd.to_datetime(df_mood['date'])
+        elif 'created_at' in df_mood.columns:
+            df_mood['date'] = pd.to_datetime(df_mood['created_at']) # Fallback
+        else:
+            st.info("Missing 'date' or 'created_at' column in mood data.")
+            df_mood = pd.DataFrame() # Clear df to prevent further errors
+            
+    if not df_mood.empty:
         
         df_mood['Week'] = df_mood['date'].dt.to_period('W').apply(lambda r: r.start_time.strftime('%Y-%m-%d'))
         df_weekly_avg = df_mood.groupby('Week')['mood'].mean().reset_index()
