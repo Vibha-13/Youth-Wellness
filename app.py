@@ -530,44 +530,37 @@ def sentiment_compound(text: str) -> float:
 
 def register_user_db(email: str):
     """
-    Inserts a new user entry into the 'users' and 'profiles' tables 
+    Inserts a new user entry into the 'profiles' table 
     using the dedicated Admin Client to bypass RLS.
     """
-    # Retrieve the ADMIN client (guaranteed to be initialized correctly)
+    # Retrieve the ADMIN client
     admin_client = get_supabase_admin_client()
     
-    # Check if the client initialization failed (e.g., key is missing)
     if not admin_client:
         return None 
         
-    # 1. Generate a valid UUID for the new user ID
     new_user_id = str(uuid.uuid4())
-    
-    # 2. Get current timestamp in ISO format for PostgreSQL
     current_time = datetime.now().isoformat() 
     
     try:
-        # 3. Insert into 'users' table 
-        admin_client.table("users").insert({
-            "id": new_user_id,
-            "email": email,
-            "created_at": current_time 
-        }).execute()
+        # NOTE: We are intentionally REMOVING the insert into the 'users' table 
+        # because it is redundant and likely causing a permissions or schema error.
 
-        # 4. Also insert into 'profiles' table 
-        # FIX: The column name is 'id' in your schema, not 'user_id'.
+        # 1. Insert ONLY into the 'profiles' table 
+        # This insert uses the correct 'id' column name (which we fixed previously)
         admin_client.table("profiles").insert({
-            "id": new_user_id, # <-- CORRECTED FROM "user_id"
+            "id": new_user_id, 
             "created_at": current_time
         }).execute()
         
-        # If both inserts succeed, the function returns the ID
+        # If the insert succeeds, the function returns the ID
         return new_user_id
             
     except Exception as e:
-        # st.error(f"DB Error: {e}") # Uncomment this line temporarily to see the real error if it still fails
+        # Print the actual error from the DB to the Streamlit console for debugging
+        # st.error(f"Database registration error details: {e}") 
         return None
-
+        
 def get_user_by_email_db(email: str):
     supabase_client = st.session_state.get("_supabase_client_obj")
     if not supabase_client:
