@@ -92,6 +92,7 @@ def setup_page_and_layout():
     is_logged_in = st.session_state.get("logged_in", False)
     
     # --- CSS STYLING ---
+    # NOTE: All CSS braces MUST be doubled ({{ }}) inside this f-string.
     st.markdown(f"""
 <style>
 /* 1. Global Background and Typography */
@@ -184,7 +185,7 @@ footer {{
     visibility: hidden;
 }}
 
-/* Breathing Effect CSS (NEW VISUALS) - ALL BRACES ARE DOUBLED */
+/* Breathing Effect CSS (NEW HEART VISUALS) - ALL BRACES ARE DOUBLED */
 @keyframes pulse-in {{
     0% {{ transform: scale(0.6); opacity: 0.8; }} 
     100% {{ transform: scale(1.0); opacity: 1.0; }}
@@ -194,12 +195,44 @@ footer {{
     100% {{ transform: scale(0.6); opacity: 0.8; }}
 }}
 
-.breathing-circle {{
-    width: 300px;
-    height: 300px;
-    background-color: #FF9CC2; /* Your primary theme color */
+.heart-shape {{
+    position: relative;
+    width: 250px; /* Base size */
+    height: 250px; /* Base size */
+    background-color: #FF9CC2; /* Match the circle's original color */
+    transform: rotate(-45deg);
+    border-radius: 0 50% 0 0; /* Creates the bottom point and one curve */
+    box-shadow: 0 0 50px rgba(255, 156, 194, 0.7);
+    transition: background-color 0.5s;
+}}
+
+.heart-shape::before,
+.heart-shape::after {{
+    content: "";
+    position: absolute;
+    width: 250px;
+    height: 250px;
+    background-color: #FF9CC2; 
     border-radius: 50%;
-    margin: 50px auto;
+    transition: background-color 0.5s; /* Allow color transition on the curves */
+}}
+
+.heart-shape::before {{
+    top: -125px; /* Half the width/height */
+    left: 0;
+}}
+
+.heart-shape::after {{
+    top: 0;
+    left: 125px; /* Half the width/height */
+}}
+
+/* Container to hold text and animation, centered over the heart */
+.breathing-heart-content {{
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(45deg); /* Re-rotate the text */
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -207,22 +240,45 @@ footer {{
     color: white;
     font-size: 1.5rem;
     font-weight: bold;
-    box-shadow: 0 0 50px rgba(255, 156, 194, 0.7);
-    transition: background-color 0.5s;
+    width: 100%;
+    height: 100%;
 }}
 
-/* Specific state animations */
-.inhale {{
+/* Parent container for the animation */
+.heart-animation-wrapper {{
+    position: relative;
+    width: 350px; /* Need a larger container for the heart shape */
+    height: 350px;
+    margin: 50px auto;
+    /* Apply the animation to the wrapper */
+}}
+
+/* Specific state animations (Apply to the wrapper) */
+.heart-animation-wrapper.inhale {{
     animation: pulse-in 4s ease-in-out forwards; /* 4 seconds inhale */
+}}
+.heart-animation-wrapper.hold {{
+    transform: scale(1.0); /* Keeps scale steady */
+    animation-duration: 7s; 
+}}
+.heart-animation-wrapper.exhale {{
+    animation: pulse-out 8s ease-in-out forwards; /* 8 seconds exhale */
+}}
+
+/* Adjust colors of the heart shape based on state */
+.heart-animation-wrapper.inhale .heart-shape,
+.heart-animation-wrapper.inhale .heart-shape::before,
+.heart-animation-wrapper.inhale .heart-shape::after {{
     background-color: #FF9CC2; 
 }}
-.hold {{
-    transform: scale(1.0); /* Keeps scale steady */
-    animation-duration: 7s; /* 7 seconds hold (no animation, just steady state) */
+.heart-animation-wrapper.hold .heart-shape,
+.heart-animation-wrapper.hold .heart-shape::before,
+.heart-animation-wrapper.hold .heart-shape::after {{
     background-color: #FF6F91;
 }}
-.exhale {{
-    animation: pulse-out 8s ease-in-out forwards; /* 8 seconds exhale */
+.heart-animation-wrapper.exhale .heart-shape,
+.heart-animation-wrapper.exhale .heart-shape::before,
+.heart-animation-wrapper.exhale .heart-shape::after {{
     background-color: #6A8DFF;
 }}
 
@@ -234,6 +290,7 @@ setup_page_and_layout()
 
 
 # ---------- ECE HELPER FUNCTIONS (KALMAN FILTER) ----------
+# ... (rest of the ECE helper functions are unchanged)
 @st.cache_data
 def initialize_kalman(Q_val=0.01, R_val=0.1):
     """Initializes the Kalman filter state variables."""
@@ -301,6 +358,7 @@ def generate_simulated_physiological_data(current_time_ms):
     }
 
 # ---------- CACHING & LAZY SETUP ----------
+# ... (rest of the caching and lazy setup functions are unchanged)
 @st.cache_resource
 def setup_analyzer():
     return SentimentIntensityAnalyzer()
@@ -382,6 +440,7 @@ def get_supabase_admin_client():
 
 
 # ---------- Session state defaults (CLEANED UP) ----------
+# ... (rest of the session state initialization is unchanged)
 if "page" not in st.session_state:
     st.session_state["page"] = "Home"
 
@@ -480,6 +539,7 @@ if "plant_health" not in st.session_state:
 analyzer = setup_analyzer()
 
 # ---------- AI/Sentiment Helper functions (All preserved) ----------
+# ... (rest of AI/Sentiment helpers are unchanged)
 def clean_text_for_ai(text: str) -> str:
     if not text:
         return ""
@@ -552,7 +612,7 @@ def sentiment_compound(text: str) -> float:
     return analyzer.polarity_scores(text)["compound"]
 
 # ---------- Supabase helpers (DB functions) ----------
-
+# ... (rest of Supabase helpers are unchanged)
 def register_user_db(email: str):
     """
     Inserts a new user entry into the 'users' and 'profiles' tables 
@@ -825,6 +885,7 @@ def check_and_reset_goals():
 check_and_reset_goals()
 
 # ---------- PAGE CONTENT FUNCTIONS (Full Implementation for Key Features) ----------
+# ... (app_splash_screen, unauthenticated_home, sidebar_status_display, sidebar_navigation, dashboard_metric, homepage_panel, mindful_journaling_page, mood_tracker_page, wellness_checkin_page, ai_chat_page, cbt_thought_record_page are unchanged)
 
 # [NEW] Splash Screen Function for Initial Transition
 def app_splash_screen():
@@ -1582,10 +1643,10 @@ def cbt_thought_record_page():
     else:
         st.info("Complete a Cognitive Thought Record to see your history.")
 
-# -------------------- Mindful Breathing Page (UPDATED WITH VISUALS) --------------------
+# -------------------- Mindful Breathing Page (UPDATED WITH HEART VISUALS) --------------------
 def mindful_breathing_page():
     st.title("🌬️ Mindful Breathing")
-    st.subheader("Follow the circle: Grow to Inhale, Pause to Hold, Shrink to Exhale.")
+    st.subheader("Follow the heart: **Grow to Inhale**, **Pause to Hold**, **Shrink to Exhale**.")
     st.markdown("---")
     
     # Breathing parameters
@@ -1607,12 +1668,17 @@ def mindful_breathing_page():
 
     if breathing_state == "stop":
         st.info("Click 'Start Session' to begin the 4-7-8 guided breathing exercise.")
-        # Placeholder for the static circle display
+        # --- NEW HEART HTML FOR STOP STATE ---
         st.markdown(f"""
-        <div class="breathing-circle" style="transform: scale(0.6); background-color: #FF9CC2;">
-            CLICK START
+        <div class="heart-animation-wrapper" style="transform: scale(0.6);">
+            <div class="heart-shape" style="background-color: #FF9CC2;">
+                <div class="breathing-heart-content">
+                    CLICK START
+                </div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
+        # --- END NEW HEART HTML ---
         if st.button("Start Session", use_container_width=True):
             start_breathing()
 
@@ -1630,36 +1696,48 @@ def mindful_breathing_page():
         try:
             for cycle in range(1, 4): # Run 3 full cycles for a good session
                 
-                # 1. Inhale (4s) - Circle grows
+                # 1. Inhale (4s) - Heart grows
                 with circle_placeholder:
                     st.markdown(f"""
-                    <div class="breathing-circle inhale">
-                        <p style="font-size: 2.5rem; margin: 0;">INHALE</p>
-                        <p style="font-size: 1rem; margin: 0;">4 SECONDS</p>
+                    <div class="heart-animation-wrapper inhale">
+                        <div class="heart-shape">
+                            <div class="breathing-heart-content">
+                                <p style="font-size: 2.5rem; margin: 0;">INHALE</p>
+                                <p style="font-size: 1rem; margin: 0;">4 SECONDS</p>
+                            </div>
+                        </div>
                     </div>
                     """, unsafe_allow_html=True)
                 with status_placeholder:
                     st.info(f"Cycle {cycle}/3: Breathe in deep...")
                 time.sleep(inhale_time)
                 
-                # 2. Hold (7s) - Circle is large and steady
+                # 2. Hold (7s) - Heart is large and steady
                 with circle_placeholder:
                     st.markdown(f"""
-                    <div class="breathing-circle hold">
-                        <p style="font-size: 2.5rem; margin: 0;">HOLD</p>
-                        <p style="font-size: 1rem; margin: 0;">7 SECONDS</p>
+                    <div class="heart-animation-wrapper hold">
+                        <div class="heart-shape">
+                            <div class="breathing-heart-content">
+                                <p style="font-size: 2.5rem; margin: 0;">HOLD</p>
+                                <p style="font-size: 1rem; margin: 0;">7 SECONDS</p>
+                            </div>
+                        </div>
                     </div>
                     """, unsafe_allow_html=True)
                 with status_placeholder:
                     st.warning(f"Cycle {cycle}/3: Hold your breath...")
                 time.sleep(hold_time)
 
-                # 3. Exhale (8s) - Circle shrinks
+                # 3. Exhale (8s) - Heart shrinks
                 with circle_placeholder:
                     st.markdown(f"""
-                    <div class="breathing-circle exhale">
-                        <p style="font-size: 2.5rem; margin: 0;">EXHALE</p>
-                        <p style="font-size: 1rem; margin: 0;">8 SECONDS</p>
+                    <div class="heart-animation-wrapper exhale">
+                        <div class="heart-shape">
+                            <div class="breathing-heart-content">
+                                <p style="font-size: 2.5rem; margin: 0;">EXHALE</p>
+                                <p style="font-size: 1rem; margin: 0;">8 SECONDS</p>
+                            </div>
+                        </div>
                     </div>
                     """, unsafe_allow_html=True)
                 with status_placeholder:
@@ -1685,9 +1763,9 @@ def mindful_breathing_page():
     st.markdown("---")
     st.markdown("### The 4-7-8 Technique")
     st.markdown("""
-    * **Inhale** quietly through your nose for **4 seconds** (Circle grows).
-    * **Hold** your breath for a count of **7 seconds** (Circle stays large).
-    * **Exhale** completely through your mouth for **8 seconds** (Circle shrinks).
+    * **Inhale** quietly through your nose for **4 seconds** (Heart grows).
+    * **Hold** your breath for a count of **7 seconds** (Heart stays large).
+    * **Exhale** completely through your mouth for **8 seconds** (Heart shrinks).
     """)
 
 
