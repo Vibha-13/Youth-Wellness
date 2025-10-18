@@ -24,7 +24,23 @@ except ImportError:
     # If the user hasn't installed supabase, we define a dummy client to prevent errors
     def create_client(*args, **kwargs):
         return None
-
+# --- ADMIN CLIENT FOR REGISTRATION ---
+# This client is created once and uses the Service Role Key to bypass RLS.
+@st.cache_resource
+def get_supabase_admin_client():
+    try:
+        url = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL"))
+        key = st.secrets.get("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_KEY"))
+        
+        if not url or not key:
+            st.error("Missing Supabase Service Key or URL in secrets.")
+            return None
+        
+        # Use create_client with the Service Role Key
+        return create_client(url, key)
+    except Exception as e:
+        st.error(f"Failed to initialize Admin Client: {e}")
+        return None
 # ---------- CONSTANTS ----------
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1" 
 OPENROUTER_MODEL_NAME = "openai/gpt-3.5-turbo" 
@@ -537,47 +553,38 @@ def sentiment_compound(text: str) -> float:
 # ---------- Supabase helpers (DB functions remain the same) ----------
 
 def register_user_db(email: str):
-    """
-    Inserts a new user entry into the 'users' and 'profiles' tables 
-    using the Supabase Service Role Key to bypass strict RLS checks for registration.
-    """
-    # Retrieve the necessary credentials securely
-    # NOTE: You must set SUPABASE_URL and SUPABASE_SERVICE_KEY in your .streamlit/secrets.toml
-    supabase_url = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL"))
-    supabase_service_key = st.secrets.get("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_KEY")) 
+    # Retrieve the ADMIN client (guaranteed to be initialized correctly)
+    admin_client = get_supabase_admin_client()
     
-    if not supabase_url or not supabase_service_key:
-        st.error("Configuration Error: SUPABASE_URL or SUPABASE_SERVICE_KEY not found in secrets.")
-        return None
-        
-    # 1. Create a client with service_role privileges (BYPASSES RLS)
-    admin_client = create_client(supabase_url, supabase_service_key)
+    # Check if the client initialization failed
+    if not admin_client:
+        return None 
     
-    # 2. Generate UUID and timestamp
+    # 1. Generate UUID and timestamp
     new_user_id = str(uuid.uuid4())
     current_time = datetime.now().isoformat() 
     
     try:
-        # 3. Use admin_client to insert into 'users'
+        # 2. Use the admin_client to insert into 'users'
         admin_client.table("users").insert({
             "id": new_user_id,
             "email": email,
             "created_at": current_time 
         }).execute()
 
-        # 4. Use admin_client to insert into 'profiles'
-        # CRITICAL FIX: Removed the non-existent "username" column
+        # 3. Use the admin_client to insert into 'profiles'
         admin_client.table("profiles").insert({
             "id": new_user_id,
             "created_at": current_time
         }).execute()
         
-        # If both inserts succeed, the function returns the ID
         return new_user_id
             
     except Exception as e:
-        # st.error(f"DB Error: {e}") # Keep this line commented unless you need to debug further
+        # Re-introduce the error printout to see if there's a NEW error
+        st.error(f"DB Insert Error: {e}") 
         return None
+        
 def get_user_by_email_db(email: str):
     supabase_client = st.session_state.get("_supabase_client_obj")
     if not supabase_client:
