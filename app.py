@@ -5,6 +5,7 @@ import random
 import re
 import uuid
 from datetime import datetime, timedelta
+from supabase import create_client
 import pandas as pd
 import plotly.express as px
 import numpy as np
@@ -536,41 +537,39 @@ def sentiment_compound(text: str) -> float:
 # ---------- Supabase helpers (DB functions remain the same) ----------
 
 def register_user_db(email: str):
-    """
-    Inserts a new user entry into the 'users' and 'profiles' tables 
-    with a generated UUID and current timestamp.
-    """
-    supabase_client = st.session_state.get("_supabase_client_obj")
-    if not supabase_client:
-        return None
-        
-    # 1. Generate a valid UUID for the new user ID
-    new_user_id = str(uuid.uuid4())
+    # Retrieve the necessary credentials
+    supabase_url = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL"))
+    # !! USE THE SERVICE ROLE KEY HERE !!
+    supabase_service_key = st.secrets.get("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_SERVICE_KEY")) 
     
-    # 2. Get current timestamp in ISO format for PostgreSQL
+    # 1. Create a client with service_role privileges
+    # This client BYPASSES all RLS checks for the insert operation.
+    admin_client = create_client(supabase_url, supabase_service_key)
+    
+    # 2. Generate UUID and timestamp as before
+    new_user_id = str(uuid.uuid4())
     current_time = datetime.now().isoformat() 
     
     try:
-        # 3. Insert into 'users' table (CRITICAL: Includes id and created_at)
-        res_user = supabase_client.table("users").insert({
+        # 3. Use the admin_client to insert into 'users'
+        admin_client.table("users").insert({
             "id": new_user_id,
             "email": email,
             "created_at": current_time 
         }).execute()
 
-        # 4. Also insert into 'profiles' table (CRITICAL: Includes id and created_at)
-        supabase_client.table("profiles").insert({
+        # 4. Use the admin_client to insert into 'profiles'
+        admin_client.table("profiles").insert({
             "id": new_user_id,
             "username": email.split("@")[0],
             "created_at": current_time
         }).execute()
         
-        # Check if the user insert was successful
-        if getattr(res_user, "data", None):
-            return new_user_id
+        # If both inserts succeed, the function returns the ID (not necessary to check res_user)
+        return new_user_id
             
     except Exception as e:
-        st.error(f"DB Error: {e}") # Uncomment this line temporarily to see the real error if it still fails
+        st.error(f"DB Error: {e}") 
         return None
 
 def get_user_by_email_db(email: str):
