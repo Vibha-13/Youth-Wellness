@@ -558,23 +558,31 @@ def register_user_db(email: str):
 
 # app.py (Around Line 458)
 
+# app.py (Around Line 458)
+
 def get_user_by_email_db(email: str):
-    supabase_client = st.session_state.get("_supabase_client_obj")
+    """
+    Searches the database for an existing user's ID using their email.
+    Uses the ADMIN CLIENT to bypass RLS, ensuring a reliable lookup.
+    """
+    # CRITICAL FIX: Use the RLS-bypassing Admin Client for lookup
+    supabase_client = get_supabase_admin_client()
+    
     if not supabase_client:
-        # If the regular Supabase client isn't available, we can't look up a user
+        # If the Admin Client setup failed (e.g., Service Key missing), return empty
         return []
+        
     try:
-        # CRITICAL FIX: Only query the 'users' table, as 'profiles.email' does not exist 
-        # (based on your 'column profiles.email does not exist' error).
-        # We search for the email and select the ID for successful login.
+        # Query the 'users' table (confirmed to hold the email constraint)
+        # Using the admin client ensures this select statement executes successfully.
         res = supabase_client.table("users").select("id, email").eq("email", email).execute()
         
         # This will return the user data if found, or an empty list if not.
         return res.data or []
 
     except Exception as e:
-        # We keep the error message here to debug any future client/network issues
-        st.error(f"CRITICAL LOGIN LOOKUP FAIL: {e}") 
+        # If the lookup fails here, the Supabase URL or Service Key is highly likely incorrect.
+        st.error(f"CRITICAL ADMIN LOOKUP FAIL: {e}") 
         return []
 
 
