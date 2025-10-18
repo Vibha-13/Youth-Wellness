@@ -48,7 +48,8 @@ MOOD_EMOJI_MAP = {
     1: "😭 Agonizing", 2: "😩 Miserable", 3: "😞 Very Sad",
     4: "🙁 Sad", 5: "😐 Neutral/Okay", 6: "🙂 Content",
     7: "😊 Happy", 8: "😁 Very Happy", 9: "🤩 Excited",
-    10: "🥳 Joyful", 11: "✨ Euphoric"
+    10: "🥳 Joyful",
+    11: "✨ Euphoric"
 }
 
 DEFAULT_GOALS = {
@@ -245,6 +246,33 @@ textarea:focus, input:focus {
         transform: translateY(0);
     }
 }
+
+/* 9. NEW: Centered Auth Card Style */
+.centered-auth-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 80vh; /* Takes up most of the viewport height */
+}
+.auth-card {
+    width: 100%;
+    max-width: 450px;
+    padding: 40px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(255, 156, 194, 0.3); /* Soft pink shadow */
+    transition: transform 0.4s ease-out, opacity 0.4s ease-out;
+    opacity: 0;
+    transform: translateY(20px);
+    animation: cardEntrance 0.6s forwards cubic-bezier(0.25, 0.46, 0.45, 0.94); /* Smooth cubic transition */
+}
+@keyframes cardEntrance {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 # --- END CRITICAL STYLE INJECTION FIX ---
@@ -303,7 +331,7 @@ def register_user_db(user_id, email, full_name):
 
         return True, "User registered successfully."
     except Exception as e:
-        st.error(f"Database registration error: {e}")
+        # st.error(f"Database registration error: {e}") # Keep silent in utility
         return False, f"Failed to register user in DB: {e}"
 
 def load_all_user_data(user_id):
@@ -313,12 +341,10 @@ def load_all_user_data(user_id):
 
     try:
         # Fetch Journal Entries
-        # FIX: Changed ORDER BY 'date' to 'created_at' as 'date' column likely does not exist for ordering on initial load.
         journal_data = supabase_client.table('journal_entries').select('*').eq('user_id', user_id).order('created_at', desc=True).limit(100).execute()
         st.session_state["daily_journal"] = journal_data.data if journal_data.data else []
         
         # Fetch Mood History
-        # FIX: Changed ORDER BY 'date' to 'created_at' as 'date' column likely does not exist for ordering on initial load.
         mood_data = supabase_client.table('mood_history').select('*').eq('user_id', user_id).order('created_at', desc=True).limit(100).execute()
         st.session_state["mood_history"] = mood_data.data if mood_data.data else []
 
@@ -351,7 +377,7 @@ def load_all_user_data(user_id):
 
         return True
     except Exception as e:
-        # st.error(f"Error loading user data: {e}") # Suppressing original error for cleaner fix
+        # st.error(f"Error loading user data: {e}") 
         st.session_state["logged_in"] = False
         return False
 
@@ -402,132 +428,156 @@ def kalman_filter_simple(measured_value, process_noise=0.1, measurement_noise=0.
     }
     return X_updated
 
-# ---------- AUTHENTICATION FUNCTIONS ----------
+# ---------- NEW: CENTRAL AUTHENTICATION FUNCTION ----------
 
-def sidebar_auth():
-    """Handles login, registration, and logout in the sidebar."""
+def central_auth_screen():
+    """Handles Login, Registration in a centered, modern card when logged out."""
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
+    
+    st.markdown('<div class="centered-auth-wrapper">', unsafe_allow_html=True)
+    
+    col_center = st.columns([1, 4, 1])[1] # Use columns to center the card on the screen
 
-    with st.sidebar:
-        st.markdown(f"<h2>HarmonySphere 🧠</h2>", unsafe_allow_html=True)
-
+    with col_center:
+        st.markdown(f"""
+        <div class="auth-card">
+            <h1 style="text-align: center; color: #FF6F91;">HarmonySphere 🧠</h1>
+            <p style="text-align: center; color: #6c757d;">Your personal, safe space for mental wellness.</p>
+            <hr style="border: 1px solid #FFD6E0;">
+        """, unsafe_allow_html=True)
+        
+        # Display warning if DB is offline
         if not supabase_client:
-             st.warning("⚠️ Supabase connection failed. App running in offline/demo mode.")
+            st.warning("⚠️ Supabase connection failed. Authentication is disabled.")
+            st.markdown('</div>', unsafe_allow_html=True) # close auth-card
+            st.markdown('</div>', unsafe_allow_html=True) # close wrapper
+            return
 
-        if not st.session_state["logged_in"]:
-            st.subheader("Welcome!")
-            tab1, tab2 = st.tabs(["Log In", "Register"])
-            
-            with tab1:
-                with st.form("login_form", clear_on_submit=False):
-                    email = st.text_input("Email (Login)", key="login_email_input_fix")
-                    password = st.text_input("Password (Login)", type="password", key="login_password_input_fix")
-                    submit_button = st.form_submit_button("Login to Dashboard")
+        # Use tabs for a clean switch between Login and Register
+        tab1, tab2 = st.tabs(["🔒 Log In", "✨ Create Account"])
+        
+        with tab1:
+            with st.form("login_form", clear_on_submit=False):
+                email = st.text_input("Email", key="login_email_input_fix")
+                password = st.text_input("Password", type="password", key="login_password_input_fix")
+                st.markdown("---")
+                submit_button = st.form_submit_button("Access Dashboard")
 
-                    if submit_button:
-                        if not supabase_client:
-                            st.error("Cannot log in: Supabase client is not available.")
-                            st.session_state["logged_in"] = False
-                            st.session_state["user_id"] = None
-                            st.stop()
+                if submit_button:
+                    with st.spinner("Authenticating..."):
+                        try:
+                            response = supabase_client.auth.sign_in_with_password({'email': email, 'password': password})
                             
-                        with st.spinner("Authenticating..."):
+                            st.session_state["user"] = response.user
+                            st.session_state["user_id"] = response.user.id
+                            
+                            if load_all_user_data(response.user.id):
+                                st.session_state["logged_in"] = True
+                                st.success("👋 Logged in successfully! Redirecting...")
+                                time.sleep(1.5)
+                                st.rerun()
+                            else:
+                                st.error("Login successful, but failed to load user data. Check your Supabase table schema!")
+                                st.session_state["logged_in"] = False
+                                
+                        except Exception as e:
+                            st.error(f"Login failed: Invalid credentials or {e}")
+                            st.session_state["logged_in"] = False
+
+        with tab2:
+            with st.form("register_form", clear_on_submit=True):
+                full_name = st.text_input("Full Name", key="register_name")
+                email = st.text_input("Email", key="register_email")
+                password = st.text_input("Password (min 6 characters)", type="password", key="register_password")
+                st.markdown("---")
+                submit_button = st.form_submit_button("Create My Account")
+
+                if submit_button:
+                    if not supabase_admin_client:
+                        st.error("Cannot register: Supabase admin client is not available.")
+                        st.stop()
+
+                    if len(password) < 6:
+                        st.error("Password must be at least 6 characters.")
+                    else:
+                        with st.spinner("Creating account..."):
                             try:
-                                response = supabase_client.auth.sign_in_with_password({'email': email, 'password': password})
+                                # Create user via Supabase Auth
+                                response = supabase_admin_client.auth.sign_up({'email': email, 'password': password})
+                                user_id = response.user.id
                                 
-                                st.session_state["user"] = response.user
-                                st.session_state["user_id"] = response.user.id
+                                # Register user data in our public tables using Admin Client
+                                success, message = register_user_db(user_id, email, full_name)
                                 
-                                # Load all data before setting logged_in
-                                if load_all_user_data(response.user.id):
-                                    st.session_state["logged_in"] = True
-                                    st.sidebar.info("👋 Logged in successfully! Redirecting...")
-                                    time.sleep(1.5) # Smooth transition delay
-                                    st.rerun()
+                                if success:
+                                    st.success("Account created! Please switch to the 'Log In' tab above.")
                                 else:
-                                    st.error("Login successful, but failed to load user data. Check your Supabase table schema!")
-                                    st.session_state["logged_in"] = False
+                                    # If DB registration fails, attempt to delete the auth user
+                                    try:
+                                        supabase_admin_client.auth.admin.delete_user(user_id)
+                                    except:
+                                        pass
+                                    st.error(f"Registration failed: {message}")
                                     
                             except Exception as e:
-                                st.error(f"Login failed: Invalid credentials or {e}")
-                                st.session_state["logged_in"] = False
+                                if "Email rate limit exceeded" in str(e):
+                                    st.error("Too many signups from this IP. Please wait a moment.")
+                                else:
+                                    st.error(f"Registration failed: {e}")
 
-            with tab2:
-                with st.form("register_form", clear_on_submit=True):
-                    full_name = st.text_input("Full Name (Register)", key="register_name")
-                    email = st.text_input("Email (Register)", key="register_email")
-                    password = st.text_input("Password (min 6 characters)", type="password", key="register_password")
-                    submit_button = st.form_submit_button("Create Account")
+        st.markdown('</div>', unsafe_allow_html=True) # close auth-card
+    
+    st.markdown('</div>', unsafe_allow_html=True) # close wrapper
 
-                    if submit_button:
-                        if not supabase_admin_client:
-                            st.error("Cannot register: Supabase admin client is not available.")
-                            st.stop()
 
-                        if len(password) < 6:
-                            st.error("Password must be at least 6 characters.")
-                        else:
-                            with st.spinner("Creating account..."):
-                                try:
-                                    # Create user via Supabase Auth
-                                    response = supabase_admin_client.auth.sign_up({'email': email, 'password': password})
-                                    user_id = response.user.id
-                                    
-                                    # Register user data in our public tables using Admin Client
-                                    success, message = register_user_db(user_id, email, full_name)
-                                    
-                                    if success:
-                                        st.success("Account created! Please log in above.")
-                                    else:
-                                        # If DB registration fails, attempt to delete the auth user
-                                        try:
-                                            supabase_admin_client.auth.admin.delete_user(user_id)
-                                        except:
-                                            pass
-                                        st.error(f"Registration failed: {message}")
-                                        
-                                except Exception as e:
-                                    if "Email rate limit exceeded" in str(e):
-                                        st.error("Too many signups from this IP. Please wait a moment.")
-                                    else:
-                                        st.error(f"Registration failed: {e}")
+# ---------- REFRACTORED: SIDEBAR CONTENT (LOGGED IN ONLY) ----------
 
-        else: # Logged In View
-            st.markdown(f"#### Hello, {st.session_state.get('user_full_name', 'User')}!")
-            st.caption(f"Logged in as: {st.session_state.get('user', {}).get('email', 'N/A')}")
+def render_sidebar():
+    """Renders the static and logged-in content for the sidebar."""
+    with st.sidebar:
+        st.markdown(f"<h2>HarmonySphere 🧠</h2>", unsafe_allow_html=True)
+        
+        if not st.session_state.get("logged_in"):
+            # When logged out, the sidebar is minimal.
+            st.caption("Please log in on the main screen.")
+            return
+
+        # --- LOGGED IN VIEW ---
+        st.markdown(f"#### Hello, {st.session_state.get('user_full_name', 'User')}!")
+        st.caption(f"Logged in as: {st.session_state.get('user', {}).get('email', 'N/A')}")
+        
+        # --- DAILY GOALS TRACKER ---
+        st.markdown("---")
+        st.markdown("##### Today's Focus")
+        goals = st.session_state.get("daily_goals", DEFAULT_GOALS)
+        
+        for key, goal in goals.items():
+            progress = goal["count"] / goal["target"]
+            emoji = goal["emoji"]
             
-            # --- DAILY GOALS TRACKER ---
-            st.markdown("---")
-            st.markdown("##### Today's Focus")
-            goals = st.session_state.get("daily_goals", DEFAULT_GOALS)
+            if progress >= 1:
+                st.markdown(f"✅ **{emoji} {goal['name']}**")
+            else:
+                st.markdown(f"**{emoji} {goal['name']}**")
+                st.progress(progress)
+        
+        st.markdown("---")
+        
+        if st.button("Logout", key="logout_button"):
+            if supabase_client:
+                supabase_client.auth.sign_out()
             
-            for key, goal in goals.items():
-                progress = goal["count"] / goal["target"]
-                emoji = goal["emoji"]
-                
-                if progress >= 1:
-                    st.markdown(f"✅ **{emoji} {goal['name']}**")
-                else:
-                    st.markdown(f"**{emoji} {goal['name']}**")
-                    st.progress(progress)
-            
-            st.markdown("---")
-            
-            if st.button("Logout", key="logout_button"):
-                if supabase_client:
-                    supabase_client.auth.sign_out()
-                
-                # Clear all session state variables
-                for key in list(st.session_state.keys()):
-                    if key not in ["app_loaded"]: # Keep splash screen state
-                        del st.session_state[key]
-                        
-                st.session_state["logged_in"] = False
-                st.session_state["page"] = "Home" # Reset page to avoid page error
-                st.rerun()
+            # Clear all session state variables
+            for key in list(st.session_state.keys()):
+                if key not in ["app_loaded"]: # Keep splash screen state
+                    del st.session_state[key]
+                    
+            st.session_state["logged_in"] = False
+            st.session_state["page"] = "Home" # Reset page to avoid page error
+            st.rerun()
 
-# ---------- PAGE FUNCTIONS ----------
+# ---------- PAGE FUNCTIONS (Unchanged from here) ----------
 
 # --- 1. Homepage (MODERNIZED CARD STRUCTURE) --- 
 def homepage_panel():
@@ -556,7 +606,6 @@ def homepage_panel():
     # Calculate a simple streak
     current_streak = 0
     if st.session_state.get("mood_history"):
-        # Since 'date' is used in the insert, we assume it's available here.
         dates = pd.to_datetime([item['date'] for item in st.session_state['mood_history']]).date
         unique_dates = set(dates)
         today = datetime.now().date()
@@ -702,7 +751,6 @@ def mindful_journaling_page():
     df_journal = pd.DataFrame(st.session_state.get("daily_journal", []))
     if not df_journal.empty:
         # Check if 'date' column exists, otherwise fallback (if needed).
-        # Since we fixed the load order, we assume 'date' exists or user will fix schema.
         if 'date' in df_journal.columns:
             df_journal['date'] = pd.to_datetime(df_journal['date']).dt.date
         elif 'created_at' in df_journal.columns:
@@ -891,7 +939,7 @@ def ai_chat_page():
             with st.spinner("AI is thinking..."):
                 try:
                     system_prompt = (
-                        "You are a compassionate and non-judgmental AI wellness buddy called HarmonySphere. "
+                        "You are a compassionate and non-judgemental AI wellness buddy called HarmonySphere. "
                         "Your tone should be gentle, encouraging, and supportive. "
                         "Provide mindfulness tips, reframing exercises, and general emotional support. "
                         "You are NOT a substitute for professional mental health care. Always prioritize safety."
@@ -1203,22 +1251,6 @@ def report_summary_page():
 
     st.markdown('</div>', unsafe_allow_html=True) # <<< END WRAPPER
 
-# --- Unauthenticated Home ---
-def unauthenticated_home():
-    st.title("Welcome to HarmonySphere 🌸")
-    st.markdown("Your personal, safe space for mental wellness and self-care.")
-
-    with st.container(border=True):
-        st.markdown(f"""
-        <div style="padding: 20px; border-radius: 10px; background-color: #fcefee;">
-            <h3 style="color: #FF6F91; margin-top: 0;">Access Your Dashboard</h3>
-            <p>Please use the login or register form on the **left sidebar** to access the app's features.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        st.info("Remember: HarmonySphere is a support tool, not a substitute for medical advice.")
-
 
 # ---------- SPLASH SCREEN LOGIC (For smooth startup) ----------
 
@@ -1258,18 +1290,16 @@ def show_splash_screen():
 if "app_loaded" not in st.session_state:
     show_splash_screen()
 
-# CRITICAL: Always run sidebar auth logic
-sidebar_auth()
+# CRITICAL: Always run sidebar logic (which now only contains goals/logout when logged in)
+render_sidebar()
 
 if not st.session_state.get("logged_in"):
-    unauthenticated_home()
-
+    # If not logged in, show the new centered authentication screen
+    central_auth_screen()
 else:
     # --- AUTHENTICATED PAGES ---
     # Perform daily goal check on every run while logged in
     check_and_reset_goals()
-    
-    current_page = st.session_state["page"]
     
     # Map page names to function calls
     page_functions = {
@@ -1286,6 +1316,7 @@ else:
         "Report & Summary": report_summary_page,
     }
     
+    current_page = st.session_state["page"]
     if current_page in page_functions:
         page_functions[current_page]()
     else:
