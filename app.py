@@ -682,7 +682,7 @@ def calculate_plant_health():
     total_goals = len(goals)
     if total_goals > 0:
         for goal_key, goal in goals.items():
-            if goal["count"] >= goal["target"]:
+            if isinstance(goal, dict) and goal.get("count", 0) >= goal.get("target", 1):
                 goal_completion_score += 1
         
         health_base += (goal_completion_score / total_goals) * 30.0
@@ -697,8 +697,8 @@ def calculate_plant_health():
 
     st.session_state["plant_health"] = max(0, min(100, health_base))
     
+# !!! FIX APPLIED HERE: Added type check for robustness !!!
 def check_and_reset_goals():
-    # Logic preserved
     today = datetime.now().date()
     
     if st.session_state.get("daily_goals") is None:
@@ -707,11 +707,18 @@ def check_and_reset_goals():
     goals = st.session_state["daily_goals"]
     
     for key, goal in goals.items():
+        # CRITICAL FIX: Ensure 'goal' is a dictionary before accessing attributes
+        if not isinstance(goal, dict):
+            # If corrupted, reset just this entry to the default structure
+            goals[key] = DEFAULT_GOALS.get(key, {"count": 0, "target": 1, "last_reset": None})
+            goal = goals[key] # Update the reference
+            
         last_reset = goal.get("last_reset")
         if last_reset:
             try:
                 last_reset_date = datetime.strptime(last_reset, "%Y-%m-%d").date()
             except ValueError:
+                # Fallback if the date format is wrong
                 last_reset_date = today - timedelta(days=1) 
                 
             if last_reset_date < today:
@@ -784,7 +791,19 @@ def unauthenticated_home():
                 # Clear existing session data before logging in
                 for key in ["user_id", "user_email", "phq9_score", "phq9_interpretation", "kalman_state", "daily_journal", "mood_history", "physiological_data", "ece_history", "plant_health", "cbt_history", "last_reframing_card"]:
                     if key in st.session_state:
-                        st.session_state[key] = None
+                        # Skip if the key is already set to None or an empty container type, but ensure sensitive ones are cleared.
+                        if key in ["user_id", "user_email", "phq9_score", "phq9_interpretation"]:
+                            st.session_state[key] = None
+                        elif key in ["kalman_state"]:
+                            st.session_state[key] = initialize_kalman()
+                        elif key in ["daily_journal", "mood_history", "ece_history", "cbt_history"]:
+                            st.session_state[key] = []
+                        elif key in ["physiological_data"]:
+                            st.session_state[key] = pd.DataFrame(columns=["time_ms", "raw_ppg_signal", "filtered_hr", "gsr_stress_level"])
+                        elif key in ["plant_health"]:
+                            st.session_state[key] = 70.0
+                        elif key in ["last_reframing_card"]:
+                            st.session_state[key] = None
                         
                 user = None
                 db_connected = st.session_state.get("_db_connected")
@@ -882,7 +901,11 @@ def homepage_panel():
     
     for i, (key, goal) in enumerate(st.session_state["daily_goals"].items()):
         with goal_cols[i % 3]:
-            completed = goal["count"] >= goal["target"]
+            # Use safe check just in case
+            if not isinstance(goal, dict):
+                continue
+                
+            completed = goal.get("count", 0) >= goal.get("target", 1)
             card_style = "metric-card" + (" done" if completed else " pending")
             emoji = "✅" if completed else "⏳"
             
@@ -890,7 +913,7 @@ def homepage_panel():
             <div class="{card_style}" style="border-left: 5px solid {'#28A745' if completed else '#FFC107'};">
                 <p style='font-size: 0.85rem; color: #555; margin-bottom: 5px;'>Goal: {goal['frequency']}</p>
                 <h4 style="margin-top: 0; margin-bottom: 5px;">{goal['name']} {emoji}</h4>
-                <p style="font-size: 0.9rem;">{goal['count']} / {goal['target']} Completed</p>
+                <p style="font-size: 0.9rem;">{goal.get('count', 0)} / {goal.get('target', 1)} Completed</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1166,26 +1189,188 @@ def cbt_thought_record_page():
     else:
         st.caption("Complete a thought record to see your history here.")
 
+# --- FUNCTIONAL FEATURE: Mindful Breathing ---
+def mindful_breathing_page():
+    st.title("🧘‍♀️ Mindful Breathing")
+    st.subheader("Follow the breath cycle to calm your nervous system.")
+    st.caption("A 60-second session will complete your daily goal.")
+
+    # CSS for the Breathing Animation
+    st.markdown("""
+    <style>
+    /* Keyframes for the expanding and contracting breath circle */
+    @keyframes breath {
+        0% { transform: scale(1); background-color: #FFD6E0; }
+        40% { transform: scale(1.5); background-color: #FF9CC2; }
+        60% { transform: scale(1.5); background-color: #FF9CC2; }
+        100% { transform: scale(1); background-color: #FFD6E0; }
+    }
+
+    .breathing-circle-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 400px; /* Gives space for the animation */
+        margin-top: 20px;
+        position: relative;
+    }
+
+    .breathing-circle {
+        width: 150px;
+        height: 150px;
+        border-radius: 50%;
+        box-shadow: 0 0 20px rgba(255, 156, 194, 0.7);
+        transition: all 0.5s ease-out;
+        will-change: transform, background-color;
+        /* Animation is applied dynamically via Python */
+    }
+
+    .instruction-text {
+        position: absolute;
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #1E1E1E;
+        opacity: 0;
+        transition: opacity 0.5s ease;
+    }
+    .instruction-text.show {
+        opacity: 1;
+    }
+
+    </style>
+    """, unsafe_allow_html=True)
+
+    # --- Session State Management ---
+    if "breathing_start_time" not in st.session_state:
+        st.session_state["breathing_start_time"] = None
+    if "breathing_duration" not in st.session_state:
+        st.session_state["breathing_duration"] = 60 # seconds for goal
+
+    # --- Button Logic ---
+    col1, col2, col3 = st.columns([1, 1, 3])
+    with col1:
+        if st.session_state["breathing_state"] == "stop":
+            if st.button("Start Breathing", use_container_width=True, key="start_breath"):
+                st.session_state["breathing_state"] = "running"
+                st.session_state["breathing_start_time"] = time.time()
+                st.rerun()
+        else:
+            if st.button("Stop Session", use_container_width=True, key="stop_breath"):
+                st.session_state["breathing_state"] = "stop"
+                st.session_state["breathing_start_time"] = None
+                st.rerun()
+    
+    # --- Animation and Tracking ---
+    placeholder = st.empty()
+    
+    if st.session_state["breathing_state"] == "running":
+        
+        # Calculate time elapsed and remaining
+        elapsed_time = time.time() - st.session_state["breathing_start_time"]
+        remaining_time = max(0, st.session_state["breathing_duration"] - elapsed_time)
+        
+        # Determine current phase (4s inhale, 6s exhale, 10s cycle)
+        cycle_time = elapsed_time % 10
+        if 0 <= cycle_time < 4:
+            instruction = "INHALE (4s)"
+            animation = "breath_in"
+        elif 4 <= cycle_time < 10:
+            instruction = "EXHALE (6s)"
+            animation = "breath_out"
+        else:
+            instruction = "HOLD"
+            animation = "hold"
+        
+        # Inject animation and instruction text
+        with placeholder.container():
+            st.markdown(f"""
+            <div class="breathing-circle-container">
+                <div class="breathing-circle" style="animation: breath 10s infinite ease-in-out;"></div>
+                <div class="instruction-text show" id="instruction_text">{instruction}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.info(f"Time Remaining: **{int(remaining_time)} seconds**")
+            
+        # Check for session completion
+        if remaining_time <= 0:
+            st.session_state["breathing_state"] = "completed"
+            st.session_state["daily_goals"]["breathing_session"]["count"] = 1
+            st.success("🎉 Breathing Session Complete! Goal achieved for today.")
+            # Clear the animation by rerunning
+            time.sleep(1) # Visual pause
+            st.rerun()
+            
+        # Re-run every second to update timer and phase
+        time.sleep(1)
+        st.rerun()
+
+    elif st.session_state["breathing_state"] == "completed":
+        st.balloons()
+        st.markdown("<div class='breathing-circle-container'><p>Goal Complete!</p></div>", unsafe_allow_html=True)
+        st.session_state["breathing_state"] = "stop" # Reset for next session
+
+    else:
+        # Initial 'stop' state
+        if st.session_state["daily_goals"]["breathing_session"]["count"] >= st.session_state["daily_goals"]["breathing_session"]["target"]:
+             st.success("✅ Daily Breathing Goal Completed!")
+        else:
+             st.info("Start a 60-second breathing session to complete your daily goal.")
+             
+        st.markdown(f"""
+        <div class="breathing-circle-container">
+            <div class="breathing-circle" style="transform: scale(1); background-color: #FFD6E0;"></div>
+            <div class="instruction-text show" id="instruction_text">Ready to Begin</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# --- FUNCTIONAL FEATURE: AI Chat ---
+def ai_chat_page():
+    st.title("💬 AI Chat: Your Wellness Buddy")
+    st.caption("Chat with an empathetic AI designed to listen and provide non-judgemental support.")
+
+    # 1. Display Chat Messages
+    # Start loop from 1 to skip the system message (index 0)
+    # The initial 'Hello' message is at index 1
+    for message in st.session_state["chat_messages"][1:]:
+        avatar = "🧠" if message["role"] == "assistant" else "👤"
+        with st.chat_message(message["role"], avatar=avatar):
+            st.markdown(message["content"])
+
+    # 2. Handle User Input
+    if prompt := st.chat_input("Ask me anything or tell me how you're feeling..."):
+        
+        # Add user message to state and display immediately
+        st.session_state["chat_messages"].append({"role": "user", "content": prompt})
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(prompt)
+
+        # Generate AI response
+        with st.chat_message("assistant", avatar="🧠"):
+            with st.spinner("Buddy is thinking..."):
+                # Call the safe_generate function with the user's prompt
+                ai_response = safe_generate(prompt, max_tokens=600)
+                
+                # Check for critical safety response and apply styling
+                if ai_response.startswith("**🛑 STOP."):
+                    st.error(ai_response)
+                else:
+                    st.markdown(ai_response)
+
+        # Add AI response to state
+        st.session_state["chat_messages"].append({"role": "assistant", "content": ai_response})
+
+
 # Placeholder functions for remaining features
 def wellness_checkin_page():
     st.title("🩺 Wellness Check-in")
     st.write("### PHQ-9 Check-in Logic Goes Here.")
     st.info("This is where the user answers the PHQ-9 questions and the score is interpreted.")
 
-def ai_chat_page():
-    st.title("💬 AI Chat")
-    st.write("### AI Chat Interface Logic Goes Here.")
-    st.info("Use the `safe_generate` function to talk to the AI, and save the chat history to `st.session_state['chat_messages']`.")
-
 def wellness_ecosystem_page():
     st.title("🌱 Wellness Ecosystem")
     st.write("### Plant Gamification/Interaction Logic Goes Here.")
     st.info("Show the user's plant based on `st.session_state['plant_health']` and allow them to interact.")
-
-def mindful_breathing_page():
-    st.title("🧘‍♀️ Mindful Breathing")
-    st.write("### Breathing Animation/Instructions Go Here.")
-    st.info("This should show a breathing visual (e.g., the CSS animated circle) and increment the `breathing_session` goal when completed.")
 
 def journal_analysis_page():
     st.title("📊 Journal Analysis")
@@ -1256,8 +1441,12 @@ def sidebar_auth():
             # Clear all session state variables for a clean logout
             for key in list(st.session_state.keys()):
                 if not key.startswith("_"): 
-                    del st.session_state[key]
+                    # Only clear keys that are not system/cached resources
+                    if key in st.session_state and key not in ["logged_in", "show_splash", "page"]:
+                        del st.session_state[key]
+                        
             st.session_state["logged_in"] = False
+            st.session_state["show_splash"] = True # Go back to splash
             st.session_state["page"] = "Home"
             st.rerun()
 
