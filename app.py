@@ -214,7 +214,7 @@ footer {{
     position: relative;
     width: 250px;
     height: 250px;
-    background-color: #FF9CC2;
+    background-color: #14B8A6;
     transform: rotate(-45deg);
     border-radius: 0 50% 0 0;
     box-shadow: 0 0 50px rgba(255, 156, 194, 0.7);
@@ -227,7 +227,7 @@ footer {{
     position: absolute;
     width: 250px;
     height: 250px;
-    background-color: #FF9CC2;
+    background-color: #14B8A6;
     border-radius: 50%;
     transition: background-color 0.5s;
 }}
