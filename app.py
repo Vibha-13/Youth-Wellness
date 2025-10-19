@@ -280,7 +280,7 @@ footer {{
 .heart-animation-wrapper.inhale .heart-shape,
 .heart-animation-wrapper.inhale .heart-shape::before,
 .heart-animation-wrapper.inhale .heart-shape::after {{
-    background-color: #FF9CC2;
+    background-color: #14B8A6;
 }}
 .heart-animation-wrapper.hold .heart-shape,
 .heart-animation-wrapper.hold .heart-shape::before,
