@@ -90,79 +90,92 @@ st.set_page_config(
 def setup_page_and_layout():
     # Check if the user is logged in
     is_logged_in = st.session_state.get("logged_in", False)
-    
     st.markdown(f"""
 <style>
-/* 1. Global Background and Typography */
-.stApp {{ 
-    background: linear-gradient(135deg, #e0f2fe, #f0fdfa); /* soft pastel gradient */
+/* Overall app background & font */
+.stApp {{
+    background: linear-gradient(135deg, #e0f2fe, #f0fdfa);
     font-family: 'Inter', sans-serif;
-    color: #1E1E1E; 
-}}
-.main .block-container {{ 
-    padding: 2rem 3rem;
+    color: #1E1E1E;
 }}
 
-/* 2. Streamlit TextArea/Input fields */
+.main .block-container {{
+    padding: 2rem 3rem;
+    max-width: 700px;
+    animation: fadeIn 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}}
+
+@keyframes fadeIn {{
+    0% {{opacity: 0; transform: translateY(20px);}}
+    100% {{opacity: 1; transform: translateY(0);}}
+}}
+
+/* Inputs and textarea */
 textarea, input[type="text"], input[type="email"] {{
     color: #1E1E1E !important;
     -webkit-text-fill-color: #1E1E1E !important;
-    opacity: 1 !important;
     background-color: rgba(255, 255, 255, 0.55) !important;
     border: 1.5px solid rgba(209, 213, 219, 0.4) !important;
     border-radius: 12px !important;
     padding: 10px !important;
+    box-shadow: 0 2px 6px rgba(6,182,212,0.1);
     transition: all 0.3s ease-in-out;
 }}
+
 textarea:focus, input[type="text"]:focus, input[type="email"]:focus {{
     border-color: #4f46e5 !important;
-    box-shadow: 0 0 10px rgba(79, 70, 229, 0.4);
+    box-shadow: 0 0 12px rgba(79, 70, 229, 0.5);
 }}
 
-/* 3. Custom Card Style (Wellness Look) */
+/* Cards */
 .metric-card {{
     padding: 25px;
     border-radius: 16px;
-    background: rgba(255,255,255,0.35);
+    background: rgba(255, 255, 255, 0.35);
     backdrop-filter: blur(10px);
-    box-shadow: 0 16px 40px rgba(0,0,0,0.05);
-    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.05);
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
     margin-bottom: 20px;
+    border: none;
 }}
 .metric-card:hover {{
     transform: translateY(-8px);
-    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12);
+    cursor: pointer;
 }}
 
-/* 4. Sidebar Styles (HIDES when NOT logged in for clean transition) */
+/* Sidebar */
 [data-testid="stSidebar"] {{
     background: rgba(255, 255, 255, 0.3);
-    backdrop-filter: blur(16px);
-    box-shadow: 2px 0 15px rgba(0,0,0,0.05);
+    backdrop-filter: blur(18px);
+    box-shadow: 2px 0 18px rgba(0, 0, 0, 0.07);
     transition: transform 0.3s ease-in-out;
-    {'visibility: hidden; transform: translateX(-100%); width: 0 !important;' if not (is_logged_in and not st.session_state.get("show_splash")) else ''}
-}}
-/* Ensures the sidebar is completely gone */
-[data-testid="stSidebar"] > div:first-child {{
-    {'width: 0 !important;' if not (is_logged_in and not st.session_state.get("show_splash")) else ''}
+    border-right: 1px solid rgba(255, 255, 255, 0.25);
 }}
 
-/* 5. Primary Button Style */
-.stButton>button {{
-    color: #FFFFFF;
+[data-testid="stSidebar"] > div:first-child {{
+    transition: width 0.3s ease-in-out;
+}}
+
+/* Buttons */
+.stButton > button {{
     background: linear-gradient(120deg, #4f46e5, #06b6d4);
+    color: white;
     border-radius: 25px;
-    padding: 10px 25px;
+    padding: 13px 28px;
     font-weight: 600;
     border: none;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    transition: all 0.3s;
+    box-shadow: 0 8px 20px rgba(6, 182, 212, 0.22);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
 }}
-.stButton>button:hover {{
+.stButton > button:hover {{
     background: linear-gradient(120deg, #4338ca, #0891b2);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 30px rgba(6, 182, 212, 0.35);
 }}
 
-/* 6. Sidebar Status Tags */
+/* Sidebar Status Tags */
 .sidebar-status {{
     padding: 6px 12px;
     border-radius: 12px;
@@ -171,15 +184,23 @@ textarea:focus, input[type="text"]:focus, input[type="email"]:focus {{
     font-weight: 500;
     text-transform: uppercase;
 }}
-.status-connected {{ background-color: #D4EDDA; color: #155724; border-left: 4px solid #28A745; }}
-.status-local {{ background-color: #FFF3CD; color: #856404; border-left: 4px solid #FFC107; }}
+.status-connected {{
+    background-color: #D4EDDA;
+    color: #155724;
+    border-left: 4px solid #28A745;
+}}
+.status-local {{
+    background-color: #FFF3CD;
+    color: #856404;
+    border-left: 4px solid #FFC107;
+}}
 
-/* 7. Hide Streamlit Footer */
+/* Hide default Streamlit footer */
 footer {{
     visibility: hidden;
 }}
 
-/* Breathing Effect CSS & Heart Visuals */
+/* Heart breathing animation */
 @keyframes pulse-in {{
     0% {{ transform: scale(0.6); opacity: 0.8; }}
     100% {{ transform: scale(1.0); opacity: 1.0; }}
@@ -189,10 +210,9 @@ footer {{
     100% {{ transform: scale(0.6); opacity: 0.8; }}
 }}
 
-/* Heart Shape with pulse animation states */
 .heart-shape {{
     position: relative;
-    width: 250px; /* Base size for size consistency */
+    width: 250px;
     height: 250px;
     background-color: #FF9CC2;
     transform: rotate(-45deg);
@@ -222,7 +242,6 @@ footer {{
     left: 125px;
 }}
 
-/* Container for text and animation, centered */
 .breathing-heart-content {{
     position: absolute;
     top: 50%;
@@ -237,10 +256,9 @@ footer {{
     font-weight: bold;
     width: 100%;
     height: 100%;
-    z-index: 10;  /* Make sure it's above the heart shape for clarity */
+    z-index: 10;
 }}
 
-/* Larger container for the heart shape with animations */
 .heart-animation-wrapper {{
     position: relative;
     width: 350px;
@@ -259,7 +277,6 @@ footer {{
     animation: pulse-out 8s ease-in-out forwards;
 }}
 
-/* Colors based on state */
 .heart-animation-wrapper.inhale .heart-shape,
 .heart-animation-wrapper.inhale .heart-shape::before,
 .heart-animation-wrapper.inhale .heart-shape::after {{
