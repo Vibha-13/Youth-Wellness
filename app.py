@@ -201,28 +201,27 @@ footer {{
 }}
 
 /* Heart breathing animation */
-@keyframes pulse-in {{
-    0% {{ transform: scale(0.6); opacity: 0.8; }}
-    100% {{ transform: scale(1.0); opacity: 1.0; }}
-}}
-@keyframes pulse-out {{
-    0% {{ transform: scale(1.0); opacity: 1.0; }}
-    100% {{ transform: scale(0.6); opacity: 0.8; }}
-}}
+@keyframes pulse-in {
+    0% { transform: scale(0.6); opacity: 0.8; }
+    100% { transform: scale(1.0); opacity: 1.0; }
+}
+@keyframes pulse-out {
+    0% { transform: scale(1.0); opacity: 1.0; }
+    100% { transform: scale(0.6); opacity: 0.8; }
+}
 
-.heart-shape {{
+.heart-shape {
     position: relative;
     width: 250px;
     height: 250px;
-    background-color: #14B8A6;
+    background-color: #14B8A6; /* calm teal */
     transform: rotate(-45deg);
     border-radius: 0 50% 0 0;
-    box-shadow: 0 0 50px rgba(255, 156, 194, 0.7);
+    box-shadow: 0 0 50px rgba(20, 184, 166, 0.7); /* teal glow to replace pink */
     transition: background-color 0.5s;
-}}
-
+}
 .heart-shape::before,
-.heart-shape::after {{
+.heart-shape::after {
     content: "";
     position: absolute;
     width: 250px;
@@ -230,19 +229,17 @@ footer {{
     background-color: #14B8A6;
     border-radius: 50%;
     transition: background-color 0.5s;
-}}
-
-.heart-shape::before {{
+}
+.heart-shape::before {
     top: -125px;
     left: 0;
-}}
-
-.heart-shape::after {{
+}
+.heart-shape::after {
     top: 0;
     left: 125px;
-}}
+}
 
-.breathing-heart-content {{
+.breathing-heart-content {
     position: absolute;
     top: 50%;
     left: 50%;
@@ -257,41 +254,42 @@ footer {{
     width: 100%;
     height: 100%;
     z-index: 10;
-}}
+}
 
-.heart-animation-wrapper {{
+.heart-animation-wrapper {
     position: relative;
     width: 350px;
     height: 350px;
     margin: 50px auto;
-}}
+}
 
-.heart-animation-wrapper.inhale {{
+.heart-animation-wrapper.inhale {
     animation: pulse-in 4s ease-in-out forwards;
-}}
-.heart-animation-wrapper.hold {{
+}
+.heart-animation-wrapper.hold {
     transform: scale(1.0);
     animation-duration: 7s;
-}}
-.heart-animation-wrapper.exhale {{
+}
+.heart-animation-wrapper.exhale {
     animation: pulse-out 8s ease-in-out forwards;
-}}
+}
 
 .heart-animation-wrapper.inhale .heart-shape,
 .heart-animation-wrapper.inhale .heart-shape::before,
-.heart-animation-wrapper.inhale .heart-shape::after {{
+.heart-animation-wrapper.inhale .heart-shape::after {
     background-color: #14B8A6;
-}}
+}
 .heart-animation-wrapper.hold .heart-shape,
 .heart-animation-wrapper.hold .heart-shape::before,
-.heart-animation-wrapper.hold .heart-shape::after {{
-    background-color: #FF6F91;
-}}
+.heart-animation-wrapper.hold .heart-shape::after {
+    background-color: #4ade80; /* a subtle green shade for hold */
+}
 .heart-animation-wrapper.exhale .heart-shape,
 .heart-animation-wrapper.exhale .heart-shape::before,
-.heart-animation-wrapper.exhale .heart-shape::after {{
-    background-color: #6A8DFF;
-}}
+.heart-animation-wrapper.exhale .heart-shape::after {
+    background-color: #3b82f6; /* blue shade for exhale */
+}
+
 </style>
 """, unsafe_allow_html=True)
 
