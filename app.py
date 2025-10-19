@@ -226,13 +226,13 @@ footer {{
     top: 0;
     left: 125px; /* Half the width/height */
 }}
+
 /* Container to hold text and animation, centered over the heart */
 .breathing-heart-content {{
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%) rotate(45deg); /* Re-rotate the text */
-    z-index: 10; /* *** ADD THIS LINE *** */
     display: flex;
     flex-direction: column;
     align-items: center;
