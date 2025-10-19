@@ -91,7 +91,7 @@ def setup_page_and_layout():
     # Check if the user is logged in
     is_logged_in = st.session_state.get("logged_in", False)
     
-   st.markdown(f"""
+    st.markdown(f"""
 <style>
 /* 1. Global Background and Typography */
 .stApp {{ 
