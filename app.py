@@ -233,6 +233,7 @@ footer {{
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%) rotate(45deg); /* Re-rotate the text */
+    z-index: 10; /* *** ADD THIS LINE *** */
     display: flex;
     flex-direction: column;
     align-items: center;
