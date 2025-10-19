@@ -91,15 +91,13 @@ def setup_page_and_layout():
     # Check if the user is logged in
     is_logged_in = st.session_state.get("logged_in", False)
     
-    # --- CSS STYLING ---
-    # NOTE: All CSS braces MUST be doubled ({{ }}) inside this f-string.
-    st.markdown(f"""
+   st.markdown(f"""
 <style>
 /* 1. Global Background and Typography */
 .stApp {{ 
-    background: linear-gradient(135deg, #fcefee, #e0f7fa); /* soft pastel gradient */
+    background: linear-gradient(135deg, #e0f2fe, #f0fdfa); /* soft pastel gradient */
+    font-family: 'Inter', sans-serif;
     color: #1E1E1E; 
-    font-family: 'Poppins', sans-serif; 
 }}
 .main .block-container {{ 
     padding: 2rem 3rem;
@@ -110,41 +108,38 @@ textarea, input[type="text"], input[type="email"] {{
     color: #1E1E1E !important;
     -webkit-text-fill-color: #1E1E1E !important;
     opacity: 1 !important;
-    background-color: #ffffff !important;
-    border: 2px solid #FFD6E0 !important;
+    background-color: rgba(255, 255, 255, 0.55) !important;
+    border: 1.5px solid rgba(209, 213, 219, 0.4) !important;
     border-radius: 12px !important;
     padding: 10px !important;
     transition: all 0.3s ease-in-out;
 }}
 textarea:focus, input[type="text"]:focus, input[type="email"]:focus {{
-    border-color: #FF9CC2 !important;
-    box-shadow: 0 0 8px rgba(255, 156, 194, 0.5);
+    border-color: #4f46e5 !important;
+    box-shadow: 0 0 10px rgba(79, 70, 229, 0.4);
 }}
 
 /* 3. Custom Card Style (Wellness Look) */
 .metric-card {{
     padding: 25px;
     border-radius: 16px;
-    background: rgba(255, 255, 255, 0.8);
+    background: rgba(255,255,255,0.35);
     backdrop-filter: blur(10px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.05);
-    transition: transform 0.3s, box-shadow 0.3s, background 0.3s;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.05);
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     margin-bottom: 20px;
-    border: none;
 }}
 .metric-card:hover {{
-    transform: translateY(-5px);
-    box-shadow: 0 12px 25px rgba(0,0,0,0.1);
-    cursor: pointer;
-    background: rgba(255, 255, 255, 0.9);
+    transform: translateY(-8px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
 }}
 
 /* 4. Sidebar Styles (HIDES when NOT logged in for clean transition) */
 [data-testid="stSidebar"] {{
-    background: linear-gradient(to bottom, #fff0f5, #e0f7fa);
-    box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+    background: rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(16px);
+    box-shadow: 2px 0 15px rgba(0,0,0,0.05);
     transition: transform 0.3s ease-in-out;
-    /* CRITICAL: Hide when not logged in or during splash */
     {'visibility: hidden; transform: translateX(-100%); width: 0 !important;' if not (is_logged_in and not st.session_state.get("show_splash")) else ''}
 }}
 /* Ensures the sidebar is completely gone */
@@ -152,11 +147,10 @@ textarea:focus, input[type="text"]:focus, input[type="email"]:focus {{
     {'width: 0 !important;' if not (is_logged_in and not st.session_state.get("show_splash")) else ''}
 }}
 
-
 /* 5. Primary Button Style */
 .stButton>button {{
     color: #FFFFFF;
-    background: #FF9CC2;
+    background: linear-gradient(120deg, #4f46e5, #06b6d4);
     border-radius: 25px;
     padding: 10px 25px;
     font-weight: 600;
@@ -165,7 +159,7 @@ textarea:focus, input[type="text"]:focus, input[type="email"]:focus {{
     transition: all 0.3s;
 }}
 .stButton>button:hover {{
-    background: #FF6F91;
+    background: linear-gradient(120deg, #4338ca, #0891b2);
 }}
 
 /* 6. Sidebar Status Tags */
@@ -185,9 +179,9 @@ footer {{
     visibility: hidden;
 }}
 
-/* Breathing Effect CSS (NEW HEART VISUALS) - ALL BRACES ARE DOUBLED */
+/* Breathing Effect CSS & Heart Visuals */
 @keyframes pulse-in {{
-    0% {{ transform: scale(0.6); opacity: 0.8; }} 
+    0% {{ transform: scale(0.6); opacity: 0.8; }}
     100% {{ transform: scale(1.0); opacity: 1.0; }}
 }}
 @keyframes pulse-out {{
@@ -195,13 +189,14 @@ footer {{
     100% {{ transform: scale(0.6); opacity: 0.8; }}
 }}
 
+/* Heart Shape with pulse animation states */
 .heart-shape {{
     position: relative;
-    width: 250px; /* Base size */
-    height: 250px; /* Base size */
-    background-color: #FF9CC2; /* Match the circle's original color */
+    width: 250px; /* Base size for size consistency */
+    height: 250px;
+    background-color: #FF9CC2;
     transform: rotate(-45deg);
-    border-radius: 0 50% 0 0; /* Creates the bottom point and one curve */
+    border-radius: 0 50% 0 0;
     box-shadow: 0 0 50px rgba(255, 156, 194, 0.7);
     transition: background-color 0.5s;
 }}
@@ -212,28 +207,27 @@ footer {{
     position: absolute;
     width: 250px;
     height: 250px;
-    background-color: #FF9CC2; 
+    background-color: #FF9CC2;
     border-radius: 50%;
-    transition: background-color 0.5s; /* Allow color transition on the curves */
+    transition: background-color 0.5s;
 }}
 
 .heart-shape::before {{
-    top: -125px; /* Half the width/height */
+    top: -125px;
     left: 0;
 }}
 
 .heart-shape::after {{
     top: 0;
-    left: 125px; /* Half the width/height */
+    left: 125px;
 }}
 
-/* Container to hold text and animation, centered over the heart */
+/* Container for text and animation, centered */
 .breathing-heart-content {{
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%) rotate(45deg); /* Re-rotate the text */
-    z-index: 10; /* *** ADD THIS LINE *** */
+    transform: translate(-50%, -50%) rotate(45deg);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -243,34 +237,33 @@ footer {{
     font-weight: bold;
     width: 100%;
     height: 100%;
+    z-index: 10;  /* Make sure it's above the heart shape for clarity */
 }}
 
-/* Parent container for the animation */
+/* Larger container for the heart shape with animations */
 .heart-animation-wrapper {{
     position: relative;
-    width: 350px; /* Need a larger container for the heart shape */
+    width: 350px;
     height: 350px;
     margin: 50px auto;
-    /* Apply the animation to the wrapper */
 }}
 
-/* Specific state animations (Apply to the wrapper) */
 .heart-animation-wrapper.inhale {{
-    animation: pulse-in 4s ease-in-out forwards; /* 4 seconds inhale */
+    animation: pulse-in 4s ease-in-out forwards;
 }}
 .heart-animation-wrapper.hold {{
-    transform: scale(1.0); /* Keeps scale steady */
-    animation-duration: 7s; 
+    transform: scale(1.0);
+    animation-duration: 7s;
 }}
 .heart-animation-wrapper.exhale {{
-    animation: pulse-out 8s ease-in-out forwards; /* 8 seconds exhale */
+    animation: pulse-out 8s ease-in-out forwards;
 }}
 
-/* Adjust colors of the heart shape based on state */
+/* Colors based on state */
 .heart-animation-wrapper.inhale .heart-shape,
 .heart-animation-wrapper.inhale .heart-shape::before,
 .heart-animation-wrapper.inhale .heart-shape::after {{
-    background-color: #FF9CC2; 
+    background-color: #FF9CC2;
 }}
 .heart-animation-wrapper.hold .heart-shape,
 .heart-animation-wrapper.hold .heart-shape::before,
@@ -282,7 +275,6 @@ footer {{
 .heart-animation-wrapper.exhale .heart-shape::after {{
     background-color: #6A8DFF;
 }}
-
 </style>
 """, unsafe_allow_html=True)
 
