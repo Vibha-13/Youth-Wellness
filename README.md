@@ -24,3 +24,5 @@ For this hackathon, we focused on building a Minimum Viable Product (MVP) that i
 * **Integrate APIs:** Re-enable the full suite of API integrations for enhanced conversation and voice quality.
 * **Persistent Data:** Upgrade from session-based memory to a persistent database to create a truly personalized companion.
 * **Referral System:** Integrate with a database of mental health professionals to provide users with real-world support options.
+
+  ⚠️ Note: This app uses Supabase for backend services. The database may be paused due to inactivity (free-tier). Code and setup instructions are available for review
